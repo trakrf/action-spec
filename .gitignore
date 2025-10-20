@@ -1,0 +1,60 @@
+# IDE
+.idea/
+.vscode/
+.claude/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Spec workflow logs
+spec/active/*/log.md
+
+# Node.js / npm
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+dist/
+build/
+*.tsbuildinfo
+
+# Environment (expanded from CSW)
+.env
+.env.local
+.env.*.local
+
+# OpenTofu / Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# AWS
+.aws/
+
+# Logs
+*.log
+logs/
+
+# Testing
+.spec/
+coverage/
+.nyc_output/
+
+# Build artifacts
+*.zip
+*.tar.gz

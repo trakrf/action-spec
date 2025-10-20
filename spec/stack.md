@@ -1,5 +1,7 @@
 # Stack: TypeScript + React + Vite
 
+**Maturity**: Alpha - Velocity over stability. Breaking changes expected.
+
 > **Package Manager**: npm
 > **Test Runner**: Vitest
 > **Build Tool**: Vite
