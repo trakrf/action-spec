@@ -438,11 +438,9 @@ We FOCUS on:
 - [ ] Create a basic terraform/tofu friendly .gitignore
 
 ### Phase 1: Security Foundation
-- [ ] Initialize repository with security tooling
-- [ ] Set up GitHub security scanning
-- [ ] Create .gitignore with paranoid exclusions
+- [ ] Set up security automation (workflows + Dependabot + CodeQL)
 - [ ] Implement pre-commit hooks
-- [ ] Deploy budget alarms and cost controls
+- [ ] Deploy cost controls and remote state
 
 ### Phase 2: Core Infrastructure
 - [ ] Build Terraform modules with generic configurations
