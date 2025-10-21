@@ -412,7 +412,7 @@ resource "aws_lambda_function" "cost_killer" {
 Given tight timeline constraints, we explicitly EXCLUDE:
 - ❌ Custom GitHub Actions (use standard actions)
 - ❌ Complex state management (simple S3 backend)
-- ❌ Multi-region support (demo in us-east-1)
+- ❌ Multi-region support (demo in us-west-2)
 - ❌ Authentication system (API keys only)
 - ❌ Fancy UI framework (plain React)
 - ❌ Kubernetes integration (save for v2)
