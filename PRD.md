@@ -470,6 +470,68 @@ We FOCUS on:
 - [ ] Legal disclaimer additions
 - [ ] Create demo script
 
+## Technical Debt & Future Enhancements
+
+### Consciously Deferred from Phase 0
+
+**Separate AWS Account for Demo**
+- **Status**: Deferred for time to market
+- **Current**: Using existing AWS account (252374924199)
+- **Risk**: Demo resources mixed with other infrastructure
+- **Mitigation**: Strict resource tagging, budget alarms, manual monitoring
+- **Future**: Set up dedicated demo account via AWS Organizations
+- **Effort**: 1-2 hours (account creation, IAM setup, credential rotation)
+
+**Account Vending Machine (AVM)**
+- **Status**: Future enhancement (post-MVP)
+- **Current**: Manual AWS account management
+- **Vision**: Automated account provisioning for different demo environments
+- **Use Case**: Spin up isolated demo accounts per customer/presentation
+- **Effort**: 8-16 hours (Terraform module, Service Catalog integration, guardrails)
+
+### Descoped from Phase 1
+
+**Emergency Shutdown Lambda**
+- **Status**: Descoped for speed to market
+- **Current**: Manual cost control (budget alerts → email → run destroy script)
+- **What's Missing**: Automatic infrastructure teardown at budget threshold
+- **Risk**: Requires human in the loop; potential for delayed response
+- **Mitigation**: Email alerts at 80% and 100%, manual destroy script ready
+- **Future**: Build auto-remediation Lambda triggered by SNS
+- **Effort**: 2-3 hours (Lambda function, IAM policies, testing)
+- **Code Reference**: PRD.md lines 391-405 (already designed)
+
+**Enhanced Cost Monitoring**
+- **Status**: Deferred (basic budget alarm sufficient for demo)
+- **What's Missing**:
+  - CloudWatch dashboards for cost visualization
+  - Cost anomaly detection
+  - Per-resource cost allocation tags
+  - Daily cost reports
+- **Future**: Add after demo proves concept
+- **Effort**: 4-6 hours (dashboards, alarms, tagging strategy)
+
+### Nice-to-Have Features (Post-Demo)
+
+**Multi-Region Support**
+- **Current**: Single region (us-west-2)
+- **Future**: Deploy to multiple regions for global demo
+- **Effort**: 8-12 hours (refactor modules, region variables, testing)
+
+**Advanced Security Features**
+- GuardDuty integration
+- Security Hub consolidation
+- Automated compliance scanning
+- **Effort**: 6-10 hours
+
+**CI/CD Pipeline Enhancements**
+- Terraform plan preview on PRs
+- Cost estimation in CI (Infracost)
+- Automated testing with Terratest
+- **Effort**: 8-12 hours
+
+---
+
 ## Demo Architecture
 
 ### The ActionSpec Flow
