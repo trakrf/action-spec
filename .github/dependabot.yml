@@ -1,0 +1,55 @@
+version: 2
+updates:
+  # Monitor GitHub Actions for updates
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "security"
+    reviewers:
+      - "mikestankavich"
+    open-pull-requests-limit: 5
+
+  # Monitor npm packages (when package.json added)
+  # Uncomment when project has npm dependencies
+  # - package-ecosystem: "npm"
+  #   directory: "/"
+  #   schedule:
+  #     interval: "weekly"
+  #     day: "wednesday"
+  #     time: "09:00"
+  #     timezone: "America/Los_Angeles"
+  #   commit-message:
+  #     prefix: "chore(deps)"
+  #     include: "scope"
+  #   labels:
+  #     - "dependencies"
+  #     - "security"
+  #   reviewers:
+  #     - "mikestankavich"
+
+  # Monitor Python packages (when requirements.txt added)
+  # Uncomment when project has Python dependencies
+  # - package-ecosystem: "pip"
+  #   directory: "/backend/lambda"
+  #   schedule:
+  #     interval: "weekly"
+  #     day: "wednesday"
+  #     time: "09:00"
+  #     timezone: "America/Los_Angeles"
+  #   commit-message:
+  #     prefix: "chore(deps)"
+  #     include: "scope"
+  #   labels:
+  #     - "dependencies"
+  #     - "security"
+  #   reviewers:
+  #     - "mikestankavich"

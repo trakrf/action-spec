@@ -1,0 +1,56 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  secret-scanning:
+    name: Scan for Secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for TruffleHog
+
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+
+  pattern-check:
+    name: Check Infrastructure Patterns
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for AWS Account IDs
+        run: |
+          # Exclude standard directories
+          if grep -r --exclude-dir={node_modules,.git,dist,build} \
+             -E "[0-9]{12}" \
+             --include="*.tf" --include="*.py" --include="*.js" \
+             --include="*.yml" --include="*.yaml" .; then
+            echo "❌ Found AWS account ID patterns"
+            echo "Review and use variables instead of hardcoded IDs"
+            exit 1
+          fi
+          echo "✅ No AWS account IDs found"
+
+      - name: Check for Private IP Addresses
+        run: |
+          # Exclude standard directories
+          if grep -r --exclude-dir={node_modules,.git,dist,build} \
+             -E "10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\." \
+             --include="*.tf" --include="*.yml" --include="*.yaml" .; then
+            echo "❌ Found private IP address patterns"
+            echo "Review and use variables instead of hardcoded IPs"
+            exit 1
+          fi
+          echo "✅ No private IP addresses found"
