@@ -470,13 +470,668 @@ We FOCUS on:
 - [ ] Legal disclaimer additions
 - [ ] Create demo script
 
-## Technical Debt & Future Enhancements
+## Phase 3: Application Logic - Work Breakdown
+
+### High-Level Delivery Plan (Phases 3.1 - 3.5)
+
+This phase represents the core application logic that transforms ActionSpec from infrastructure to a working product. Estimated total effort: 3-4 weeks with focused development.
+
+#### Phase 3.1: Backend Foundation & SAM Infrastructure
+**Goal**: Establish the Lambda runtime environment and API Gateway
+**Estimated Effort**: 3-5 days
+
+**Deliverables**:
+- AWS SAM template with API Gateway configuration
+- Lambda function scaffolding (all 4 functions: spec-parser, aws-discovery, form-generator, spec-applier)
+- Shared security wrapper module with header injection and sanitization
+- SSM Parameter Store configuration for GitHub PAT
+- S3 bucket for specs storage with versioning enabled
+- IAM roles and policies for Lambda execution
+- Local development environment (SAM local)
+- Basic smoke tests for API Gateway endpoints
+
+**Success Criteria**:
+- `sam local start-api` runs successfully
+- All Lambda functions return 200 with stub responses
+- Security headers present in all responses
+- Can deploy to AWS without errors
+
+**Dependencies**: None (can start immediately)
+
+---
+
+#### Phase 3.2: Spec Validation & Parsing
+**Goal**: Implement core spec processing and validation logic
+**Estimated Effort**: 4-6 days
+
+**Deliverables**:
+- JSON Schema definition (`actionspec-v1.schema.json`)
+- Spec Parser Lambda implementation
+  - YAML parsing with PyYAML
+  - Schema validation with jsonschema
+  - Error handling and user-friendly messages
+- Configuration Validator module
+  - Schema validation
+  - Destructive change detection
+  - Warning generation
+- Example spec files (minimal, secure-waf, full)
+- Unit test suite (pytest)
+  - Valid spec parsing
+  - Invalid spec rejection
+  - Edge cases (missing fields, wrong types)
+- Lambda layer for shared dependencies
+
+**Success Criteria**:
+- Parse valid specs successfully
+- Reject invalid specs with clear error messages
+- Detect destructive changes (WAF disable, compute downsize)
+- 90%+ test coverage on validation logic
+
+**Dependencies**: Phase 3.1 (requires Lambda runtime environment)
+
+---
+
+#### Phase 3.3: GitHub Integration & AWS Discovery
+**Goal**: Connect to external systems (GitHub API, AWS APIs)
+**Estimated Effort**: 5-7 days
+
+**Deliverables**:
+- GitHub client wrapper module
+  - PyGithub integration with token caching
+  - Fetch spec files from repository
+  - Create feature branches
+  - Generate pull requests with templates
+  - Add labels and reviewers
+- Spec Applier Lambda implementation
+  - Branch creation: `action-spec-update-{timestamp}`
+  - PR description generation with change summary
+  - Error handling for GitHub API failures
+- AWS Discovery Lambda implementation
+  - Query VPCs and Subnets (ec2:Describe*)
+  - List ALBs and Target Groups
+  - Check existing WAF WebACLs
+  - Return structured resource inventory
+- Integration tests
+  - Mock GitHub API responses
+  - Test PR creation flow
+  - Validate AWS resource queries
+- Documentation for GitHub PAT setup
+
+**Success Criteria**:
+- Successfully create test PR in action-spec repo
+- Fetch spec files from GitHub repository
+- Discover existing AWS resources (VPCs, ALBs, WAF)
+- Graceful handling of GitHub rate limits
+- PR descriptions include accurate change summaries
+
+**Dependencies**: Phase 3.2 (needs spec validation for PR creation)
+
+---
+
+#### Phase 3.4: Form Generator API & React Frontend
+**Goal**: Build the user-facing application
+**Estimated Effort**: 6-8 days
+
+**Deliverables**:
+- **Form Generator Lambda** (main orchestrator)
+  - GET /form endpoint
+  - Combine spec + discovery + schema
+  - Return form structure with validation rules
+  - Handle errors gracefully
+- **React Frontend Setup**
+  - Create React App with TypeScript
+  - Dependencies: axios, react-hook-form, yup
+  - ESLint and Prettier configuration
+  - Environment variable management
+- **Core Components**
+  - `SpecForm`: Dynamic form generation from schema
+  - `WafToggle`: Prominent toggle with visual feedback (the star!)
+  - `ChangePreview`: Diff display before submission
+  - `SubmitButton`: Loading states and error handling
+  - `ErrorBoundary`: Graceful error handling
+- **API Integration Layer**
+  - Axios client with API key headers
+  - Request/response interceptors
+  - Error handling and retry logic
+- **Security Implementation**
+  - Content Security Policy in index.html
+  - Strict CORS configuration
+  - Input sanitization
+- **Styling**
+  - Responsive layout (mobile-friendly)
+  - Accessibility (WCAG AA)
+  - Loading states and animations
+- **Build Pipeline**
+  - Production build optimization
+  - Source maps for debugging
+  - Bundle size analysis
+
+**Success Criteria**:
+- Form loads with current spec from GitHub
+- Can edit spec fields with real-time validation
+- WAF toggle prominently displayed with visual indicators
+- Submit creates PR successfully
+- Form displays PR URL on success
+- Works on desktop and mobile browsers
+- No console errors or warnings
+
+**Dependencies**: Phase 3.3 (needs all backend APIs functional)
+
+---
+
+#### Phase 3.5: Deployment Automation, Testing & Documentation
+**Goal**: Make it production-ready and maintainable
+**Estimated Effort**: 4-6 days
+
+**Deliverables**:
+- **Backend Deployment**
+  - SAM deployment script with parameter management
+  - Environment-specific configurations (dev, prod)
+  - Output capture (API Gateway URL, etc.)
+  - Deployment documentation
+- **Frontend Deployment**
+  - S3 sync script with cache control headers
+  - CloudFront invalidation automation
+  - Environment variable injection
+  - Deployment GitHub Action workflow
+- **Testing Suite**
+  - End-to-end tests (Cypress or Playwright)
+    - Load form → Edit spec → Submit → Verify PR created
+  - Security tests
+    - Invalid API keys rejected
+    - Malformed specs handled gracefully
+    - Rate limiting enforced
+  - Performance tests
+    - Lambda cold start times
+    - API response times
+    - Form load performance
+  - Cost tests
+    - Lambda execution time under limits
+    - API Gateway request costs tracked
+- **Documentation**
+  - `/docs/API.md`: Complete API reference
+  - `/docs/FRONTEND_SETUP.md`: Developer setup guide
+  - `/docs/DEPLOYMENT.md`: Deployment procedures
+  - `/docs/ENVIRONMENT_VARIABLES.md`: Configuration reference
+  - `/docs/TROUBLESHOOTING.md`: Common issues and solutions
+  - `/docs/DEMO_SCRIPT.md`: Step-by-step demo walkthrough
+- **Monitoring & Observability**
+  - CloudWatch dashboard for API metrics
+  - Lambda function logs with structured logging
+  - Error alerting via SNS
+  - Cost tracking tags
+
+**Success Criteria**:
+- Can deploy full stack (backend + frontend) with one command
+- All tests passing in CI/CD pipeline
+- Zero security warnings from scanning tools
+- Complete documentation allows new developer to deploy
+- Demo script successfully demonstrates all features
+- Monitoring dashboard shows key metrics
+
+**Dependencies**: Phase 3.4 (requires complete application)
+
+---
+
+### Phase 3 Risk Management
+
+**Technical Risks**:
+- GitHub API rate limiting → Mitigation: Cache responses, implement exponential backoff
+- AWS resource discovery timeouts → Mitigation: Parallel queries, reasonable timeouts
+- Lambda cold starts affecting UX → Mitigation: Provisioned concurrency for form-generator
+- CORS issues with API Gateway → Mitigation: Test early with frontend integration
+
+**Schedule Risks**:
+- Frontend complexity underestimated → Mitigation: Keep UI simple (YAGNI), use standard components
+- Testing taking longer than expected → Mitigation: Automate early, test continuously
+- Deployment issues in AWS → Mitigation: Test SAM deployments early and often
+
+**Mitigation Strategies**:
+1. **Daily deployments**: Deploy each PR to dev environment immediately
+2. **Continuous testing**: Run tests on every commit
+3. **Documentation as code**: Write docs alongside implementation
+4. **Incremental complexity**: Start simple, add features iteratively
+5. **Regular demos**: Show working software every few days
+
+### Phase 3 Success Metrics
+
+**Technical Quality**:
+- [ ] All Lambda functions < 5s execution time (p99)
+- [ ] API Gateway response time < 500ms (p95)
+- [ ] Frontend load time < 2s (initial)
+- [ ] Test coverage > 80% for backend
+- [ ] Zero critical security findings
+- [ ] All accessibility checks passing (WCAG AA)
+
+**Functional Completeness**:
+- [ ] Can load spec from GitHub repository
+- [ ] Can edit all spec fields via form
+- [ ] WAF toggle creates correct spec changes
+- [ ] Submit creates PR with accurate description
+- [ ] AWS resource discovery populates dropdowns
+- [ ] Error messages are user-friendly
+
+**Operational Readiness**:
+- [ ] Deployment fully automated via GitHub Actions
+- [ ] Monitoring dashboard shows key metrics
+- [ ] Documentation complete and tested
+- [ ] Demo script validated by external user
+- [ ] Cost tracking confirms <$2/month baseline
+
+---
+
+## Phase 3: Application Logic - Detailed Requirements
+
+### 3.1 Lambda Function Setup (AWS SAM)
+
+#### 3.1.1 SAM Template Structure
+```yaml
+# template.yaml
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: python3.12
+    Environment:
+      Variables:
+        GITHUB_TOKEN_SSM_PARAM: /actionspec/github-token
+        SPECS_BUCKET: !Ref SpecsBucket
+        ALLOWED_REPOS: "trakrf/action-spec"  # Whitelist for security
+
+Resources:
+  # API Gateway with WAF
+  ActionSpecApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Api-Key'"
+        AllowOrigin: "'*'"  # Tighten for production
+      Auth:
+        ApiKeyRequired: true
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingBurstLimit: 100
+          ThrottlingRateLimit: 50
+```
+
+#### 3.1.2 Lambda Functions
+
+**A. Spec Parser Lambda**
+```python
+# backend/lambda/functions/spec-parser/handler.py
+"""
+Parses ActionSpec YAML and validates against schema
+Returns form structure for frontend
+"""
+Functions:
+- Parse spec YAML from GitHub or S3
+- Validate against actionspec-v1.schema.json
+- Transform to form-friendly JSON structure
+- Handle parsing errors gracefully
+
+Dependencies:
+- PyYAML
+- jsonschema
+- boto3
+```
+
+**B. AWS Discovery Lambda**
+```python
+# backend/lambda/functions/aws-discovery/handler.py
+"""
+Discovers existing AWS resources to pre-populate form fields
+"""
+Functions:
+- Query VPCs, Subnets, Security Groups
+- List existing ALBs and Target Groups
+- Check for existing WAF WebACLs
+- Return current resource state
+
+Dependencies:
+- boto3
+Required IAM permissions:
+- ec2:DescribeVpcs, ec2:DescribeSubnets
+- elasticloadbalancing:Describe*
+- wafv2:List*, wafv2:Get*
+```
+
+**C. Form Generator Lambda**
+```python
+# backend/lambda/functions/form-generator/handler.py
+"""
+Main endpoint that combines spec + discovery data
+GET /form?repo=trakrf/action-spec&spec=demo-app.spec.yml
+"""
+Flow:
+1. Fetch spec from GitHub using PyGithub
+2. Parse spec with spec-parser
+3. Enrich with AWS discovery data
+4. Return complete form structure
+
+Response format:
+{
+  "spec": { /* current spec */ },
+  "discovered": { /* AWS resources */ },
+  "schema": { /* validation rules */ },
+  "formFields": [ /* UI structure */ ]
+}
+```
+
+**D. Spec Applier Lambda**
+```python
+# backend/lambda/functions/spec-applier/handler.py
+"""
+Handles form submission and creates GitHub PR
+POST /form/submit
+"""
+Flow:
+1. Validate submitted spec against schema
+2. Create feature branch: action-spec-update-{timestamp}
+3. Update spec file in branch
+4. Create PR with change summary
+5. Add labels: "infrastructure-change", "automated"
+6. Return PR URL to frontend
+
+PR Description Template:
+## ActionSpec Update
+### Changes:
+- [ ] WAF enabled: {before} → {after}
+- [ ] Compute size: {before} → {after}
+### Automated by ActionSpec
+```
+
+#### 3.1.3 Shared Security Wrapper
+```python
+# backend/lambda/security_wrapper.py
+"""
+Applied to ALL Lambda functions
+"""
+Features:
+- Add security headers to all responses
+- Validate API key from API Gateway
+- Sanitize logs (no secrets/tokens)
+- Rate limit per IP (in-memory cache)
+- Block suspicious patterns
+```
+
+### 3.2 GitHub Integration
+
+#### 3.2.1 Authentication Setup
+```python
+# Store PAT in SSM Parameter Store (SecureString)
+aws ssm put-parameter \
+  --name /actionspec/github-token \
+  --type SecureString \
+  --value "ghp_xxxxxxxxxxxx"
+
+# Lambda retrieves at runtime:
+ssm = boto3.client('ssm')
+token = ssm.get_parameter(
+    Name='/actionspec/github-token',
+    WithDecryption=True
+)['Parameter']['Value']
+```
+
+#### 3.2.2 PyGithub Integration
+```python
+# backend/lambda/shared/github_client.py
+from github import Github
+from functools import lru_cache
+
+@lru_cache(maxsize=1)
+def get_github_client():
+    token = get_parameter('/actionspec/github-token')
+    return Github(token)
+
+def fetch_spec_file(repo_name, file_path, ref='main'):
+    """Fetch spec file content from GitHub"""
+    g = get_github_client()
+    repo = g.get_repo(repo_name)
+    file = repo.get_contents(file_path, ref=ref)
+    return file.decoded_content.decode('utf-8')
+
+def create_spec_pr(repo_name, spec_path, new_content, message):
+    """Create PR with updated spec"""
+    # Implementation from earlier in thread
+    pass
+```
+
+### 3.3 Configuration Validator
+
+#### 3.3.1 JSON Schema Definition
+```json
+// specs/schema/actionspec-v1.schema.json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "enum": ["actionspec/v1"]
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["WebApplication", "APIService", "StaticSite"]
+    },
+    "spec": {
+      "type": "object",
+      "properties": {
+        "compute": {
+          "type": "object",
+          "properties": {
+            "tier": {"enum": ["web", "api", "worker"]},
+            "size": {"enum": ["demo", "small", "medium", "large"]}
+          }
+        },
+        "security": {
+          "type": "object",
+          "properties": {
+            "waf": {
+              "type": "object",
+              "properties": {
+                "enabled": {"type": "boolean"},
+                "mode": {"enum": ["monitor", "block"]}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+#### 3.3.2 Validation Logic
+```python
+# backend/lambda/shared/validator.py
+import json
+import jsonschema
+
+def validate_spec(spec_dict):
+    """Validate spec against schema"""
+    with open('schema/actionspec-v1.schema.json') as f:
+        schema = json.load(f)
+    
+    try:
+        jsonschema.validate(spec_dict, schema)
+        return True, None
+    except jsonschema.ValidationError as e:
+        return False, str(e)
+
+def check_destructive_changes(old_spec, new_spec):
+    """Identify potentially destructive changes"""
+    warnings = []
+    
+    # Check for compute downsizing
+    if old_spec.get('compute', {}).get('size') > new_spec.get('compute', {}).get('size'):
+        warnings.append("⚠️ Compute size reduction may cause downtime")
+    
+    # Check for security downgrades
+    if old_spec.get('security', {}).get('waf', {}).get('enabled') and \
+       not new_spec.get('security', {}).get('waf', {}).get('enabled'):
+        warnings.append("⚠️ Disabling WAF will remove security protection")
+    
+    return warnings
+```
+
+### 3.4 React Frontend
+
+#### 3.4.1 Project Setup
+```bash
+# Using Create React App for simplicity (YAGNI!)
+pnpm dlx create-react-app frontend --template typescript
+cd frontend
+pnpm install axios react-hook-form @hookform/resolvers yup
+```
+
+#### 3.4.2 Core Components
+
+**A. SpecForm Component**
+```typescript
+// src/components/SpecForm/SpecForm.tsx
+Features:
+- Dynamic form generation from schema
+- Real-time validation
+- Change preview/diff display
+- Submit handling with loading states
+- Error boundaries
+
+Key sections:
+- Repository selector (dropdown of allowed repos)
+- Spec file selector
+- Dynamic form fields based on spec schema
+- AWS resource discovery display
+- Change summary before submit
+```
+
+**B. WafToggle Component**
+```typescript
+// src/components/WafToggle/WafToggle.tsx
+The star of the show!
+- Big prominent toggle switch
+- Animated expansion of WAF options when enabled
+- Cost estimate display
+- Visual security indicators
+```
+
+**C. Security Headers Implementation**
+```typescript
+// public/index.html
+<meta http-equiv="Content-Security-Policy" 
+      content="default-src 'self'; 
+               script-src 'self' 'unsafe-inline'; 
+               style-src 'self' 'unsafe-inline'; 
+               connect-src 'self' https://*.execute-api.amazonaws.com">
+```
+
+#### 3.4.3 API Integration
+```typescript
+// src/services/api.ts
+const API_BASE = process.env.REACT_APP_API_URL || 'https://demo.execute-api.us-west-2.amazonaws.com/prod';
+const API_KEY = process.env.REACT_APP_API_KEY;
+
+export const actionSpecApi = {
+  async getForm(repo: string, specPath: string) {
+    const response = await axios.get(`${API_BASE}/form`, {
+      headers: { 'X-Api-Key': API_KEY },
+      params: { repo, spec: specPath }
+    });
+    return response.data;
+  },
+  
+  async submitSpec(data: SpecSubmission) {
+    const response = await axios.post(`${API_BASE}/form/submit`, data, {
+      headers: { 'X-Api-Key': API_KEY }
+    });
+    return response.data; // Returns PR URL
+  }
+};
+```
+
+### 3.5 Local Development Setup
+
+#### 3.5.1 SAM Local Testing
+```bash
+# Start local API
+sam local start-api --env-vars env.json
+
+# env.json for local testing
+{
+  "Parameters": {
+    "GITHUB_TOKEN_SSM_PARAM": "/actionspec/github-token",
+    "SPECS_BUCKET": "actionspec-demo-specs"
+  }
+}
+```
+
+#### 3.5.2 Frontend Development
+```bash
+# .env.development
+REACT_APP_API_URL=http://localhost:3000
+REACT_APP_API_KEY=local-dev-key
+
+# Start React dev server
+npm start
+```
+
+### 3.6 Deployment Strategy
+
+#### 3.6.1 Backend Deployment
+```bash
+# Build and deploy SAM application
+sam build
+sam deploy --guided \
+  --stack-name actionspec-backend \
+  --parameter-overrides \
+    GithubTokenParam=/actionspec/github-token
+
+# Output includes API Gateway URL
+```
+
+#### 3.6.2 Frontend Deployment
+```bash
+# Build React app
+npm run build
+
+# Sync to S3 (created in Phase 2)
+aws s3 sync build/ s3://actionspec-frontend-bucket \
+  --delete \
+  --cache-control "public, max-age=3600"
+
+# Invalidate CloudFront
+aws cloudfront create-invalidation \
+  --distribution-id E1234567890 \
+  --paths "/*"
+```
+
+### 3.7 Testing Requirements
+
+- [ ] Unit tests for spec validation logic
+- [ ] Integration tests for GitHub API calls  
+- [ ] End-to-end test: Form load → Edit → Submit → PR created
+- [ ] Security tests: Invalid API keys, malformed specs
+- [ ] Cost tests: Ensure Lambdas don't run too long
+
+### 3.8 Documentation Updates
+
+- [ ] Add API documentation to `/docs/API.md`
+- [ ] Create frontend setup guide
+- [ ] Document environment variables needed
+- [ ] Add troubleshooting section
+
+This should give you everything needed for Phase 3! The key is keeping it simple (YAGNI) while hitting all the essential features for the demo.
 
 ### Consciously Deferred from Phase 0
 
 **Separate AWS Account for Demo**
 - **Status**: Deferred for time to market
-- **Current**: Using existing AWS account (252374924199)
+- **Current**: Using existing AWS account
 - **Risk**: Demo resources mixed with other infrastructure
 - **Mitigation**: Strict resource tagging, budget alarms, manual monitoring
 - **Future**: Set up dedicated demo account via AWS Organizations

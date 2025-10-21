@@ -1,0 +1,4 @@
+# Phase 3.1: No additional deps (using stdlib only)
+# Phase 3.2: Will add YAML parsing and validation
+PyYAML==6.0.1
+jsonschema==4.21.1

@@ -1,0 +1,288 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: ActionSpec Backend - Phase 3.1 Foundation
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        SPECS_BUCKET: !Ref SpecsBucket
+        GITHUB_TOKEN_SSM_PARAM: !Ref GithubTokenParamName
+    Layers:
+      - !Ref SharedDependenciesLayer
+
+  Api:
+    Cors:
+      AllowMethods: "'GET,POST,OPTIONS'"
+      AllowHeaders: "'Content-Type,X-Api-Key,Authorization'"
+      AllowOrigin: "'*'"  # Tighten in production
+    Auth:
+      ApiKeys:
+        - !Ref ActionSpecApiKey
+      UsagePlan:
+        CreateUsagePlan: PER_API
+        UsagePlanName: ActionSpecUsagePlan
+        Quota:
+          Limit: 5000
+          Period: MONTH
+        Throttle:
+          BurstLimit: 100
+          RateLimit: 50
+
+Parameters:
+  Environment:
+    Type: String
+    Default: demo
+    AllowedValues:
+      - local
+      - demo
+      - prod
+    Description: Deployment environment
+
+  GithubTokenParamName:
+    Type: String
+    Default: /actionspec/github-token
+    Description: SSM Parameter name for GitHub PAT
+
+Resources:
+  # API Gateway
+  ActionSpecApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub ${AWS::StackName}-api
+      StageName: !Ref Environment
+      EndpointConfiguration:
+        Type: REGIONAL
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingBurstLimit: 100
+          ThrottlingRateLimit: 50
+          LoggingLevel: INFO
+
+  ActionSpecApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn: ActionSpecApi
+    Properties:
+      Name: !Sub ${AWS::StackName}-api-key
+      Enabled: true
+
+  # S3 Bucket for specs
+  SpecsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-specs
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+      Tags:
+        - Key: Project
+          Value: ActionSpec
+        - Key: Phase
+          Value: "3.1"
+
+  # Shared Lambda Layer (security_wrapper)
+  SharedDependenciesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: actionspec-shared
+      Description: Shared security wrapper and utilities
+      ContentUri: backend/lambda/shared/
+      CompatibleRuntimes:
+        - python3.11
+    Metadata:
+      BuildMethod: python3.11
+
+  # Lambda Function: Spec Parser
+  SpecParserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-spec-parser
+      CodeUri: backend/lambda/functions/spec-parser/
+      Handler: handler.lambda_handler
+      Description: Parse and validate ActionSpec YAML (Phase 3.1 stub)
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref SpecsBucket
+        - Statement:
+            - Sid: CloudWatchLogs
+              Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*
+      Events:
+        ParseApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ActionSpecApi
+            Path: /api/parse
+            Method: POST
+            Auth:
+              ApiKeyRequired: true
+
+  # Lambda Function: AWS Discovery
+  AwsDiscoveryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-aws-discovery
+      CodeUri: backend/lambda/functions/aws-discovery/
+      Handler: handler.lambda_handler
+      Description: Discover AWS resources (Phase 3.1 stub)
+      Policies:
+        - Statement:
+            - Sid: EC2ReadOnly
+              Effect: Allow
+              Action:
+                - ec2:DescribeVpcs
+                - ec2:DescribeSubnets
+                - ec2:DescribeSecurityGroups
+              Resource: "*"
+            - Sid: ELBReadOnly
+              Effect: Allow
+              Action:
+                - elasticloadbalancing:DescribeLoadBalancers
+                - elasticloadbalancing:DescribeTargetGroups
+                - elasticloadbalancing:DescribeListeners
+              Resource: "*"
+            - Sid: WAFReadOnly
+              Effect: Allow
+              Action:
+                - wafv2:ListWebACLs
+                - wafv2:GetWebACL
+              Resource: "*"
+            - Sid: CloudWatchLogs
+              Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*
+      Events:
+        DiscoverApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ActionSpecApi
+            Path: /api/discover
+            Method: GET
+            Auth:
+              ApiKeyRequired: true
+
+  # Lambda Function: Form Generator
+  FormGeneratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-form-generator
+      CodeUri: backend/lambda/functions/form-generator/
+      Handler: handler.lambda_handler
+      Description: Generate form from spec + discovery (Phase 3.1 stub)
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref SpecsBucket
+        - Statement:
+            - Sid: SSMGetParameter
+              Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${GithubTokenParamName}
+            - Sid: EC2ReadOnly
+              Effect: Allow
+              Action:
+                - ec2:DescribeVpcs
+                - ec2:DescribeSubnets
+                - ec2:DescribeSecurityGroups
+              Resource: "*"
+            - Sid: ELBReadOnly
+              Effect: Allow
+              Action:
+                - elasticloadbalancing:Describe*
+              Resource: "*"
+            - Sid: WAFReadOnly
+              Effect: Allow
+              Action:
+                - wafv2:List*
+                - wafv2:Get*
+              Resource: "*"
+            - Sid: CloudWatchLogs
+              Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*
+      Events:
+        GetFormApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ActionSpecApi
+            Path: /api/form
+            Method: GET
+            Auth:
+              ApiKeyRequired: true
+
+  # Lambda Function: Spec Applier
+  SpecApplierFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-spec-applier
+      CodeUri: backend/lambda/functions/spec-applier/
+      Handler: handler.lambda_handler
+      Description: Apply spec changes via GitHub PR (Phase 3.1 stub)
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref SpecsBucket
+        - Statement:
+            - Sid: SSMGetParameter
+              Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${GithubTokenParamName}
+            - Sid: CloudWatchLogs
+              Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*
+      Events:
+        SubmitFormApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ActionSpecApi
+            Path: /api/submit
+            Method: POST
+            Auth:
+              ApiKeyRequired: true
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${ActionSpecApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiEndpoint
+
+  ApiKeyId:
+    Description: API Key ID
+    Value: !Ref ActionSpecApiKey
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiKeyId
+
+  SpecsBucketName:
+    Description: S3 bucket for spec storage
+    Value: !Ref SpecsBucket
+    Export:
+      Name: !Sub ${AWS::StackName}-SpecsBucket
