@@ -54,3 +54,13 @@ jobs:
             exit 1
           fi
           echo "✅ No private IP addresses found"
+
+  pre-commit-validation:
+    name: Pre-commit Hook Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run pre-commit checks
+        run: ./scripts/pre-commit-checks.sh
