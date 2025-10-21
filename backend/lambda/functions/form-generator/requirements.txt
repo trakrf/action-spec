@@ -1,0 +1,6 @@
+# Phase 3.1: No additional deps
+# Phase 3.3: Will add GitHub integration
+PyGithub==2.2.0
+# Phase 3.2: Will use spec parser deps
+PyYAML==6.0.1
+jsonschema==4.21.1
