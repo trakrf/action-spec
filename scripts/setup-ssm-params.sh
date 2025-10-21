@@ -1,6 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
+# TODO: Migrate to Terraform/Tofu management
+# This should be: .env.local → TF_VAR_github_token → aws_ssm_parameter resource
+# Current approach is manual but functional
+# Planned for Phase 3.5 or Terraform migration spec
+
 # ANSI color codes
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
