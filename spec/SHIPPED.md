@@ -152,8 +152,8 @@
 ### Success Metrics
 
 **Immediate (Measured at Deploy)**:
-- ✅ **Budget resource created and active in target AWS account** - **Result**: Budget `action-spec-monthly-budget` created in account 252374924199
-- ✅ **SNS topic ARN returned as Terraform output** - **Result**: `arn:aws:sns:us-west-2:252374924199:action-spec-budget-alerts`
+- ✅ **Budget resource created and active in target AWS account** - **Result**: Budget `action-spec-monthly-budget` created successfully
+- ✅ **SNS topic ARN returned as Terraform output** - **Result**: SNS topic created and ARN available via `tofu output`
 - ✅ **Zero hardcoded secrets or email addresses in committed code** - **Result**: Email in terraform.tfvars (ignored by git), template uses placeholder
 - ✅ **Terraform apply completes in < 2 minutes** - **Result**: Deployed successfully, resources created without errors
 - ✅ **All Terraform validation passes** - **Result**: Deployed with tofu apply, all resources created successfully
