@@ -1,0 +1,40 @@
+apiVersion: actionspec/v1
+kind: WebApplication
+metadata:
+  name: test-full-featured
+  labels:
+    env: test
+spec:
+  compute:
+    tier: web
+    size: demo
+    scaling:
+      min: 1
+      max: 3
+  network:
+    vpc: vpc-test123
+    subnets:
+      - subnet-a
+      - subnet-b
+    securityGroups:
+      - sg-test
+    publicAccess: true
+  data:
+    engine: postgres
+    size: demo
+    highAvailability: false
+    backupRetention: 7
+  security:
+    waf:
+      enabled: true
+      mode: monitor
+      rulesets:
+        - core-protection
+    encryption:
+      atRest: true
+      inTransit: true
+  governance:
+    maxMonthlySpend: 10
+    autoShutdown:
+      enabled: true
+      afterHours: 24

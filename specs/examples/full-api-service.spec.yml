@@ -1,0 +1,56 @@
+# ActionSpec Complete Example - Production API
+# Demonstrates: All features enabled
+
+apiVersion: actionspec/v1
+kind: APIService
+metadata:
+  name: production-api
+  labels:
+    environment: production
+    team: platform
+    cost-center: engineering
+
+spec:
+  compute:
+    tier: api
+    size: medium
+    scaling:
+      min: 3
+      max: 20
+
+  network:
+    vpc: create-new  # Auto-create VPC
+    subnets: []
+    securityGroups: []
+    publicAccess: false
+
+  data:
+    engine: postgres
+    size: large
+    highAvailability: true
+    backupRetention: 30
+
+  security:
+    waf:
+      enabled: true
+      mode: block
+      rulesets:
+        - core-protection
+        - rate-limiting
+        - geo-blocking
+        - sql-injection
+        - xss
+    encryption:
+      atRest: true
+      inTransit: true
+
+  governance:
+    maxMonthlySpend: 500
+    autoShutdown:
+      enabled: false
+
+  # Vendor extension example
+  x-monitoring:
+    datadog:
+      enabled: true
+      api_key_ssm: /prod/datadog/api-key

@@ -1,0 +1,51 @@
+# ActionSpec Demo - WAF Protection
+# Demonstrates: Toggle WAF from disabled → enabled
+
+apiVersion: actionspec/v1
+kind: WebApplication
+metadata:
+  name: demo-secure-app
+  labels:
+    purpose: portfolio-demonstration
+    environment: demo
+
+spec:
+  compute:
+    tier: web
+    size: demo
+    scaling:
+      min: 1
+      max: 3
+
+  network:
+    vpc: vpc-0a1b2c3d4e5f6g7h8  # Real-looking AWS VPC ID
+    subnets:
+      - subnet-0a1b2c3d
+      - subnet-4e5f6g7h
+    securityGroups:
+      - sg-0a1b2c3d4e5f
+    publicAccess: true
+
+  data:
+    engine: postgres
+    size: demo
+    highAvailability: false
+    backupRetention: 7
+
+  # The star feature - toggle to enable WAF
+  security:
+    waf:
+      enabled: false  # ← Change to true!
+      mode: monitor   # monitor or block
+      rulesets:
+        - core-protection
+        - rate-limiting
+    encryption:
+      atRest: true
+      inTransit: true
+
+  governance:
+    maxMonthlySpend: 10
+    autoShutdown:
+      enabled: true
+      afterHours: 24

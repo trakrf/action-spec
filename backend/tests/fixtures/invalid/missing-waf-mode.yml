@@ -1,0 +1,17 @@
+# Violation: waf.enabled=true requires waf.mode
+apiVersion: actionspec/v1
+kind: StaticSite
+metadata:
+  name: test-missing-mode
+spec:
+  security:
+    waf:
+      enabled: true  # ← Requires mode field!
+      # mode: missing!
+    encryption:
+      atRest: true
+      inTransit: true
+  governance:
+    maxMonthlySpend: 10
+    autoShutdown:
+      enabled: false

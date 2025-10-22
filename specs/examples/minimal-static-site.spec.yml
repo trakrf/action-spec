@@ -1,0 +1,25 @@
+# Minimal ActionSpec - Static website
+# Demonstrates: Simplest valid spec with minimal fields
+
+apiVersion: actionspec/v1
+kind: StaticSite
+metadata:
+  name: my-static-site
+  labels:
+    purpose: documentation
+    environment: prod
+
+spec:
+  # StaticSite does not require compute or network
+
+  security:
+    waf:
+      enabled: false  # Optional for static content
+    encryption:
+      atRest: true
+      inTransit: true
+
+  governance:
+    maxMonthlySpend: 5
+    autoShutdown:
+      enabled: false  # Always available
