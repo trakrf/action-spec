@@ -238,3 +238,60 @@ From spec.md validation criteria:
 **Notes**: This is Phase 3.2**a** (Schema + Basic Parser) - establishes the "brain" of ActionSpec. Phase 3.2b will add change detection, Phase 3.2c will deploy Lambda layer. All validation gates passed. Schema copied to lambda/functions/spec-parser/schema/ for reliable test execution. Example specs demonstrate minimal configuration, WAF toggle, and full feature set with vendor extensions. Security tests verify protection against YAML exploits. Ready for GitHub integration (Phase 3.3) and form generation (Phase 3.4).
 
 ---
+
+## Phase 3.2b - Destructive Change Detection
+- **Date**: 2025-10-22
+- **Branch**: feature/phase-3.2b-change-detection
+- **Commit**: a5308f0
+- **PR**: https://github.com/trakrf/action-spec/pull/9
+- **Summary**: Detect potentially destructive infrastructure changes before PR creation to prevent downtime, data loss, and security degradation
+- **Key Changes**:
+  - Added change_detector.py module (341 lines) with check_destructive_changes() function
+  - Implemented 5 detection categories: Security, Compute, Data, Network, Governance
+  - Created ChangeWarning dataclass with severity levels (INFO, WARNING, CRITICAL)
+  - Added SIZE_ORDER constant for size comparison (demo < small < medium < large)
+  - Implemented 20 comprehensive unit tests (536 lines) with 99% coverage
+  - Zero external dependencies (Python stdlib only)
+  - Follows existing parser.py patterns and conventions
+- **Validation**: ✅ All checks passed (38/38 tests, 99% coverage, black clean, mypy clean)
+
+### Success Metrics
+- ✅ **Detect WAF disable operations** - **Result**: Implemented with test_waf_disabling_detected, detects enabled: true → false transitions
+- ✅ **Detect compute downsizing** - **Result**: Implemented SIZE_ORDER comparison (demo < small < medium < large), warns on downgrades, ignores same-tier changes (demo → demo)
+- ✅ **Return user-friendly warning messages** - **Result**: All warnings include emoji indicators (⚠️ WARNING, 🔴 CRITICAL, ℹ️ INFO), field paths, and specific values
+- ✅ **Integration with existing spec-parser Lambda** - **Result**: Standalone module ready for Phase 3.3 import, follows parser.py patterns, zero breaking changes
+
+**Overall Success**: 100% of metrics achieved (4/4)
+
+### Technical Details
+**Detection Coverage**:
+- Security: WAF disabling/downgrade, encryption disabling, ruleset reductions
+- Compute: Size downgrades, scaling max/min reductions
+- Data: Engine changes (CRITICAL), HA disabling, backup retention reduction
+- Network: VPC changes, public access removal, subnet removals
+- Governance: Auto-shutdown enabling (INFO), budget reductions (INFO)
+
+**Edge Cases Handled**:
+- Identical specs return empty warnings list
+- Upgrading resources generates no warnings
+- Adding new sections (compute, data) generates no warnings
+- Missing fields treated as "adding" not "removing" (safe)
+
+**Code Quality**:
+- 99% test coverage (128 statements, 1 missed: __str__ method)
+- 20 comprehensive tests covering all detection categories
+- Full type annotations, mypy clean
+- Black formatted, PEP 8 compliant
+- No debug statements, no TODO comments
+
+**Integration Ready**:
+```python
+from spec_parser.change_detector import check_destructive_changes, Severity
+
+warnings = check_destructive_changes(old_spec, new_spec)
+# Returns List[ChangeWarning] with severity, message, field_path
+```
+
+**Next Phase**: Phase 3.3 will integrate this module into Spec Applier Lambda to include warnings in PR descriptions when users submit infrastructure changes.
+
+---
