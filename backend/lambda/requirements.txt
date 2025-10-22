@@ -1,0 +1,14 @@
+# ActionSpec Lambda Dependencies
+# Shared across all Lambda functions
+
+# GitHub API integration
+PyGithub==2.1.1
+
+# YAML parsing (already used by spec-parser)
+PyYAML==6.0.1
+
+# JSON Schema validation (already used by spec-parser)
+jsonschema==4.20.0
+
+# AWS SDK (provided by Lambda runtime, but specified for local development)
+boto3==1.34.10
