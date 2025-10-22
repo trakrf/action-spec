@@ -1,0 +1,280 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://actionspec.dev/schemas/v1",
+  "title": "ActionSpec v1 Schema",
+  "description": "Infrastructure specification for GitHub Actions automation",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "enum": ["actionspec/v1"],
+      "description": "Schema version"
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["WebApplication", "APIService", "StaticSite"],
+      "description": "Type of infrastructure to deploy"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$",
+          "minLength": 3,
+          "maxLength": 63,
+          "description": "Resource name (lowercase, alphanumeric, hyphens)"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {"type": "string"},
+          "description": "Arbitrary key-value labels"
+        }
+      },
+      "additionalProperties": false
+    },
+    "spec": {
+      "type": "object",
+      "properties": {
+        "compute": { "$ref": "#/definitions/compute" },
+        "network": { "$ref": "#/definitions/network" },
+        "data": { "$ref": "#/definitions/data" },
+        "security": { "$ref": "#/definitions/security" },
+        "governance": { "$ref": "#/definitions/governance" }
+      },
+      "required": ["security", "governance"],
+      "additionalProperties": false,
+      "patternProperties": {
+        "^x-[a-zA-Z0-9-]+$": {
+          "description": "Vendor extensions allowed"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "compute": {
+      "type": "object",
+      "properties": {
+        "tier": {
+          "type": "string",
+          "enum": ["web", "api", "worker"]
+        },
+        "size": {
+          "type": "string",
+          "enum": ["demo", "small", "medium", "large"]
+        },
+        "scaling": {
+          "type": "object",
+          "properties": {
+            "min": {"type": "integer", "minimum": 1, "maximum": 10},
+            "max": {"type": "integer", "minimum": 1, "maximum": 100}
+          },
+          "required": ["min", "max"]
+        }
+      },
+      "required": ["tier", "size", "scaling"]
+    },
+    "network": {
+      "type": "object",
+      "properties": {
+        "vpc": {"type": "string"},
+        "subnets": {
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 0
+        },
+        "securityGroups": {
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 0
+        },
+        "publicAccess": {"type": "boolean", "default": false}
+      },
+      "required": ["vpc", "subnets", "securityGroups"]
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "engine": {
+          "type": "string",
+          "enum": ["postgres", "mysql", "dynamodb", "none"]
+        },
+        "size": {
+          "type": "string",
+          "enum": ["demo", "small", "medium", "large"]
+        },
+        "highAvailability": {"type": "boolean"},
+        "backupRetention": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 35
+        }
+      },
+      "required": ["engine"]
+    },
+    "security": {
+      "type": "object",
+      "properties": {
+        "waf": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "mode": {
+              "type": "string",
+              "enum": ["monitor", "block"]
+            },
+            "rulesets": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["core-protection", "rate-limiting", "geo-blocking", "sql-injection", "xss"]
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": ["enabled"]
+        },
+        "encryption": {
+          "type": "object",
+          "properties": {
+            "atRest": {"type": "boolean", "default": true},
+            "inTransit": {"type": "boolean", "default": true}
+          }
+        }
+      },
+      "required": ["waf", "encryption"]
+    },
+    "governance": {
+      "type": "object",
+      "properties": {
+        "maxMonthlySpend": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "autoShutdown": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "afterHours": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 168
+            }
+          },
+          "required": ["enabled"]
+        }
+      },
+      "required": ["maxMonthlySpend", "autoShutdown"]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"kind": {"const": "WebApplication"}}
+      },
+      "then": {
+        "properties": {
+          "spec": {"required": ["compute", "network"]}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"kind": {"const": "APIService"}}
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "required": ["compute", "network"],
+            "properties": {
+              "data": {
+                "properties": {
+                  "engine": {"not": {"const": "none"}}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"kind": {"const": "StaticSite"}}
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "not": {
+              "required": ["compute"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "spec": {
+            "properties": {
+              "security": {
+                "properties": {
+                  "waf": {
+                    "properties": {"enabled": {"const": true}}
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "properties": {
+              "security": {
+                "properties": {
+                  "waf": {"required": ["mode"]}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "spec": {
+            "required": ["compute"],
+            "properties": {
+              "compute": {
+                "properties": {
+                  "scaling": {
+                    "properties": {"max": {"minimum": 11}}
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "properties": {
+              "governance": {
+                "properties": {
+                  "maxMonthlySpend": {"minimum": 50}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

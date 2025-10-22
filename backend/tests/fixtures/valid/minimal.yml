@@ -1,0 +1,15 @@
+apiVersion: actionspec/v1
+kind: StaticSite
+metadata:
+  name: test-minimal
+spec:
+  security:
+    waf:
+      enabled: false
+    encryption:
+      atRest: true
+      inTransit: true
+  governance:
+    maxMonthlySpend: 5
+    autoShutdown:
+      enabled: false
