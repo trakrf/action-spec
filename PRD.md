@@ -542,38 +542,129 @@ This phase represents the core application logic that transforms ActionSpec from
 
 #### Phase 3.3: GitHub Integration & AWS Discovery
 **Goal**: Connect to external systems (GitHub API, AWS APIs)
-**Estimated Effort**: 5-7 days
+**Estimated Effort**: 7-10 days (split into 3 sub-phases)
+
+**Note**: Phase 3.3 is split into three independently deliverable PRs to manage complexity and enable parallel development where possible.
+
+---
+
+##### Phase 3.3.1: GitHub Client Foundation
+**Goal**: Authenticate and read from GitHub
+**Estimated Effort**: 2-3 days
+**Status**: Pending
+**Dependencies**: Phase 3.2 (complete)
 
 **Deliverables**:
-- GitHub client wrapper module
-  - PyGithub integration with token caching
-  - Fetch spec files from repository
-  - Create feature branches
-  - Generate pull requests with templates
-  - Add labels and reviewers
-- Spec Applier Lambda implementation
-  - Branch creation: `action-spec-update-{timestamp}`
-  - PR description generation with change summary
-  - Error handling for GitHub API failures
-- AWS Discovery Lambda implementation
-  - Query VPCs and Subnets (ec2:Describe*)
-  - List ALBs and Target Groups
-  - Check existing WAF WebACLs
-  - Return structured resource inventory
-- Integration tests
-  - Mock GitHub API responses
-  - Test PR creation flow
-  - Validate AWS resource queries
-- Documentation for GitHub PAT setup
+- `backend/lambda/shared/github_client.py` module
+  - `get_github_client()` - SSM parameter retrieval, token caching with `@lru_cache`
+  - `fetch_spec_file(repo_name, file_path, ref='main')` - Read spec from GitHub
+- GitHub PAT setup documentation (`docs/GITHUB_SETUP.md`)
+- Unit tests with mocked PyGithub responses
+- Error handling: auth failures, rate limits, file not found
+- Exponential backoff for rate limit handling
 
 **Success Criteria**:
-- Successfully create test PR in action-spec repo
-- Fetch spec files from GitHub repository
-- Discover existing AWS resources (VPCs, ALBs, WAF)
-- Graceful handling of GitHub rate limits
-- PR descriptions include accurate change summaries
+- Can authenticate with GitHub using PAT from SSM
+- Can fetch spec file content from action-spec repo
+- Graceful handling of GitHub rate limits (exponential backoff)
+- Tests cover error scenarios (404, 403, rate limit)
 
-**Dependencies**: Phase 3.2 (needs spec validation for PR creation)
+**Why separate?** This is the foundation for 3.3.2. Ships read-only GitHub access first (safer). Can be used by form-generator Lambda immediately in Phase 3.4.
+
+---
+
+##### Phase 3.3.2: Spec Applier & PR Creation
+**Goal**: Create PRs with change summaries
+**Estimated Effort**: 3-4 days
+**Status**: Pending
+**Dependencies**: Phase 3.3.1 (requires GitHub client)
+
+**Deliverables**:
+- Complete `spec-applier` Lambda implementation (replaces stub from Phase 3.1)
+- GitHub client additions:
+  - `create_branch(repo, branch_name, base_ref)` - Create feature branch
+  - `create_spec_pr(repo, spec_path, new_content, old_content)` - Full PR flow
+  - `add_pr_labels(repo, pr_number, labels)` - Add labels/reviewers
+- **Integration with `change_detector.py`** (from Phase 3.2b) - Key integration point!
+- PR description template with warnings:
+  ```markdown
+  ## ActionSpec Update
+  ### Changes:
+  - WAF enabled: false → true
+
+  ### Warnings:
+  ⚠️ WARNING: Disabling WAF will remove security protection
+
+  ### Automated by ActionSpec
+  ```
+- Unit tests for PR creation flow
+- Integration tests with mocked GitHub API
+- Error handling for GitHub API failures
+
+**Success Criteria**:
+- Creates branch: `action-spec-update-{timestamp}`
+- Commits spec changes to branch
+- Creates PR with formatted description
+- **PR includes change warnings from detector** (key integration!)
+- Returns PR URL to caller
+- Handles GitHub API failures gracefully
+
+**Why separate?** This is the core feature of Phase 3.3 (write operations). Builds on 3.3.1 foundation. Can be thoroughly tested independently before AWS Discovery.
+
+---
+
+##### Phase 3.3.3: AWS Discovery Lambda
+**Goal**: Query existing AWS resources
+**Estimated Effort**: 2-3 days
+**Status**: Pending
+**Dependencies**: None (independent - can run parallel to 3.3.2!)
+
+**Deliverables**:
+- Complete `aws-discovery` Lambda implementation (replaces stub from Phase 3.1)
+- Resource query functions:
+  - `discover_vpcs()` - List VPCs with CIDR blocks
+  - `discover_subnets(vpc_id)` - List subnets in VPC
+  - `discover_albs()` - List Application Load Balancers
+  - `discover_waf_webacls()` - Check existing WAF configurations
+- Return structured JSON for form dropdowns:
+  ```json
+  {
+    "vpcs": [{"id": "vpc-123", "cidr": "10.0.0.0/16"}],
+    "albs": [{"arn": "...", "name": "demo-alb"}],
+    "waf": [{"id": "...", "name": "demo-waf"}]
+  }
+  ```
+- IAM policy requirements documented (`docs/IAM_POLICIES.md`)
+- Unit tests with mocked boto3 responses
+- Error handling for missing permissions
+
+**Success Criteria**:
+- Can query VPCs and Subnets (ec2:Describe*)
+- Can list ALBs and Target Groups
+- Can check existing WAF WebACLs
+- Returns JSON structure suitable for form dropdowns
+- Handles missing resources gracefully (empty arrays)
+- Handles permission errors with clear messages
+
+**Why separate?** Completely independent functionality. Could be developed in parallel with 3.3.2. Doesn't block PR creation. Enables form pre-population (nice-to-have for Phase 3.4).
+
+---
+
+**Phase 3.3 Execution Strategy**:
+
+Sequential Path (Critical):
+```
+3.3.1 (GitHub read) → 3.3.2 (PR creation) → Ready for Phase 3.4 frontend
+```
+
+Parallel Opportunity:
+```
+3.3.2 (PR creation) ← 3.3.1 (GitHub read) → 3.3.3 (AWS discovery)
+                      ↓
+                    Phase 3.4 can start
+```
+
+**Note**: 3.3.3 can be developed in parallel with 3.3.2 since they don't interact. Phase 3.4 can begin after 3.3.2 completes (doesn't require 3.3.3).
 
 ---
 
@@ -1193,6 +1284,77 @@ This should give you everything needed for Phase 3! The key is keeping it simple
 - Cost estimation in CI (Infracost)
 - Automated testing with Terratest
 - **Effort**: 8-12 hours
+
+**GitHub Token Management Automation**
+
+*Current State (Phase 3.3.1)*:
+- GitHub PAT manually created and stored in SSM Parameter Store via AWS CLI
+- Token value pasted from GitHub settings into `aws ssm put-parameter` command
+- Manual rotation every 90 days
+
+*Desired State* (12-Factor App Compliance):
+- GitHub token sourced from environment variable or Terraform variable
+- Terraform creates SSM parameter automatically during deployment
+- Token value read from `terraform.tfvars` (gitignored) or `TF_VAR_github_token` env var
+- Infrastructure-as-code for reproducible deployments
+
+*Benefits*:
+- ✅ Eliminates manual AWS CLI steps
+- ✅ Environment-specific tokens (dev/staging/prod) managed consistently
+- ✅ Token rotation integrated into deployment pipeline
+- ✅ Follows 12-factor app config principles
+
+*Implementation Plan*:
+```hcl
+# infrastructure/modules/backend/ssm.tf
+resource "aws_ssm_parameter" "github_token" {
+  name        = "/actionspec/${var.environment}/github-token"
+  description = "GitHub PAT for ActionSpec Lambda functions"
+  type        = "SecureString"
+  value       = var.github_token  # From terraform.tfvars or TF_VAR_github_token
+
+  lifecycle {
+    ignore_changes = [value]  # Allow manual rotation without Terraform drift
+  }
+
+  tags = {
+    Project     = "ActionSpec"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+# infrastructure/modules/backend/variables.tf
+variable "github_token" {
+  description = "GitHub Personal Access Token for Lambda functions"
+  type        = string
+  sensitive   = true
+}
+```
+
+*Usage*:
+```bash
+# Option 1: terraform.tfvars (gitignored)
+echo 'github_token = "ghp_YOUR_TOKEN_HERE"' >> terraform.tfvars
+terraform apply
+
+# Option 2: Environment variable (CI/CD)
+export TF_VAR_github_token="ghp_YOUR_TOKEN_HERE"
+terraform apply
+
+# Option 3: GitHub Secrets (GitHub Actions)
+# Store token in repo secrets, reference as ${{ secrets.GITHUB_TOKEN }}
+```
+
+*Effort Estimate*: 2-3 hours
+- Create Terraform resource (30 min)
+- Update deployment documentation (30 min)
+- Test in dev environment (1 hour)
+- Validate across environments (1 hour)
+
+*Priority*: Medium (quality-of-life improvement, not blocking)
+
+*Tracked*: Phase 3.3.1 implementation complete, tech debt logged for future sprint
 
 ---
 
