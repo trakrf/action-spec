@@ -199,3 +199,42 @@ From spec.md validation criteria:
 **Notes**: This is Phase 3.1 stub implementation - validates infrastructure before business logic. All handlers return valid JSON responses with security headers. Deployment scripts ready for AWS. SAM template follows plan.md patterns exactly. Used `--no-verify` for commit due to pre-commit hook flagging mock AWS account ID in test fixture. Real AWS account ID sanitized from PRD.md during shipping.
 
 ---
+
+## Phase 3.2a - Spec Validation & Parsing Engine
+- **Date**: 2025-10-22
+- **Branch**: feature/active-phase-3.2-spec-validation
+- **Commit**: 7098642
+- **PR**: https://github.com/trakrf/action-spec/pull/8
+- **Summary**: Complete YAML parsing and JSON Schema validation engine for ActionSpec infrastructure specifications
+- **Key Changes**:
+  - Created comprehensive JSON Schema with conditional validation rules (280 lines)
+  - Implemented safe YAML parser with security checks (size limits, dangerous tags, timeout)
+  - Built user-friendly error messages with field paths and expected values
+  - Added exception hierarchy (ParseError, ValidationError, SecurityError)
+  - Created 3 example specs (minimal StaticSite, WAF demo, full APIService)
+  - Built 9 test fixtures (2 valid, 7 invalid scenarios)
+  - Implemented 18 comprehensive unit tests (100% passing)
+  - Added complete schema documentation (README.md with field reference)
+  - Replaced stub handler with real parser integration
+- **Validation**: ✅ All checks passed (black formatting, mypy types, 18/18 tests, 84% coverage)
+
+### Success Metrics
+
+From spec.md validation criteria:
+
+- ✅ **JSON Schema Complete** - **Result**: Schema validates all fields with conditional rules (StaticSite forbids compute, APIService requires data, WAF enabled requires mode)
+- ✅ **Parser Handles Valid Specs** - **Result**: 3/3 example specs parse successfully (minimal-static-site, secure-web-waf, full-api-service)
+- ✅ **Parser Rejects Invalid Specs** - **Result**: 7 invalid fixtures all rejected with clear error messages (field paths, expected values, violation types)
+- ⏳ **Destructive Change Detection** - **Result**: Framework ready, implementation deferred to Phase 3.2b
+- ✅ **Security Hardening** - **Result**: YAML bomb test passing, oversized docs rejected (1MB limit), dangerous tags blocked (!!python/object)
+- ✅ **Performance SLA** - **Result**: Parse time metadata verified < 500ms in test output
+- ✅ **Test Coverage** - **Result**: 84% coverage (exceeds 80% target) - handler 100%, parser 90%, exceptions 60%
+- ✅ **Lambda Integration** - **Result**: Handler end-to-end tests passing with security wrapper integration
+- ⏳ **Lambda Layer** - **Result**: Dependencies defined (PyYAML, jsonschema), deployment deferred to Phase 3.2c
+- ✅ **Documentation** - **Result**: Schema README with field reference, conditional validation examples, error message format guide
+
+**Overall Success**: 80% of metrics achieved (8/10), 2 deferred to future phases (3.2b, 3.2c)
+
+**Notes**: This is Phase 3.2**a** (Schema + Basic Parser) - establishes the "brain" of ActionSpec. Phase 3.2b will add change detection, Phase 3.2c will deploy Lambda layer. All validation gates passed. Schema copied to lambda/functions/spec-parser/schema/ for reliable test execution. Example specs demonstrate minimal configuration, WAF toggle, and full feature set with vendor extensions. Security tests verify protection against YAML exploits. Ready for GitHub integration (Phase 3.3) and form generation (Phase 3.4).
+
+---
