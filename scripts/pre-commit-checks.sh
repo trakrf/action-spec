@@ -79,11 +79,14 @@ for file in $FILTERED_FILES; do
       fi
     done < <(grep -nI "252374924199" "$file" 2>/dev/null || true)
   else
-    # For code files, block any 12-digit pattern
+    # For code files, block any 12-digit pattern except clearly fake test IDs
     while IFS=: read -r line_num line_text; do
       if [[ "$line_text" =~ [0-9]{12} ]]; then
         matched=$(echo "$line_text" | grep -oE '[0-9]{12}' | head -1)
-        report_violation "$file" "$line_num" "AWS Account ID pattern detected" "$matched"
+        # Skip common fake/test account IDs (all same digit or standard examples)
+        if [[ ! "$matched" =~ ^(000000000000|111111111111|999999999999|123456789012)$ ]]; then
+          report_violation "$file" "$line_num" "AWS Account ID pattern detected" "$matched"
+        fi
       fi
     done < <(grep -nIE '[0-9]{12}' "$file" 2>/dev/null || true)
   fi
