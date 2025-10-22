@@ -32,16 +32,18 @@ jobs:
 
       - name: Check for AWS Account IDs
         run: |
-          # Exclude standard directories
+          # Exclude standard directories and skip common test IDs
+          # Allow: 999999999999 (test ID), 123456789012 (AWS docs example), 000000000000, 111111111111
           if grep -r --exclude-dir={node_modules,.git,dist,build} \
              -E "[0-9]{12}" \
              --include="*.tf" --include="*.py" --include="*.js" \
-             --include="*.yml" --include="*.yaml" .; then
+             --include="*.yml" --include="*.yaml" . | \
+             grep -vE "(999999999999|123456789012|000000000000|111111111111)"; then
             echo "❌ Found AWS account ID patterns"
             echo "Review and use variables instead of hardcoded IDs"
             exit 1
           fi
-          echo "✅ No AWS account IDs found"
+          echo "✅ No AWS account IDs found (test IDs allowed)"
 
       - name: Check for Private IP Addresses
         run: |
