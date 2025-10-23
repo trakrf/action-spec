@@ -2,8 +2,8 @@ resource "aws_instance" "pod" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = var.instance_type
 
-  # Use first available subnet from default VPC
-  subnet_id = data.aws_subnets.default.ids[0]
+  # Use specified or default subnet
+  subnet_id = local.subnet_id
 
   # Assign public IP for demo access
   associate_public_ip_address = true

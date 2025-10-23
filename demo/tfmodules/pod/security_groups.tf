@@ -6,7 +6,7 @@ resource "aws_security_group" "pod" {
 
   name_prefix = "${var.customer}-${var.environment}-pod-"
   description = "Security group for ${var.customer} ${var.environment} pod"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = local.vpc_id
 
   ingress {
     description = "HTTP from anywhere (demo only)"
