@@ -247,7 +247,7 @@ Resources:
       FunctionName: !Sub ${AWS::StackName}-spec-applier
       CodeUri: backend/lambda/functions/spec-applier/
       Handler: handler.lambda_handler
-      Description: Apply spec changes via GitHub PR (Phase 3.1 stub)
+      Description: Apply spec changes via GitHub PR (Phase 3.3.3)
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref SpecsBucket
@@ -269,7 +269,7 @@ Resources:
           Type: Api
           Properties:
             RestApiId: !Ref ActionSpecApi
-            Path: /api/submit
+            Path: /spec/apply
             Method: POST
             Auth:
               ApiKeyRequired: true
