@@ -1,736 +1,727 @@
-# Phase 3.3.3: AWS Discovery Lambda
+# Phase 3.3.3: Spec Applier Lambda & PR Description Generator
 
 ## Origin
-This specification implements the third sub-phase of Phase 3.3 (GitHub Integration & AWS Discovery) from PRD.md. This phase is **independent** and can be developed in parallel with Phase 3.3.2. It enables the React frontend (Phase 3.4) to pre-populate form dropdowns with existing AWS resources.
+This specification is Part 2 of the Spec Applier & PR Creation feature (split from original 3.3.2). This phase implements the **core Lambda handler** that creates GitHub PRs with destructive change warnings.
 
 ## Outcome
-ActionSpec can query existing AWS infrastructure (VPCs, Subnets, ALBs, WAF) and return structured JSON suitable for form dropdown population. This improves user experience by showing available resources instead of requiring manual entry.
+The spec-applier Lambda accepts updated spec YAML, validates it, runs change detection, and creates a GitHub PR with formatted warnings. This completes the backend API for frontend integration (Phase 3.4).
 
 **What will change:**
-- Complete `aws-discovery` Lambda implementation (replaces stub from Phase 3.1)
-- Resource query functions for VPCs, Subnets, ALBs, and WAF WebACLs
-- Structured JSON response format for frontend consumption
-- IAM policy documentation (`docs/IAM_POLICIES.md`)
-- Error handling for missing permissions and empty results
-- Comprehensive unit tests with mocked boto3 responses
+- Replace spec-applier stub handler with full implementation
+- Implement PR description generator with change warnings
+- Update SAM template API endpoint path from `/api/submit` to `/spec/apply`
+- Update handler function name to `lambda_handler`
+- Comprehensive unit tests for handler and PR generator
+- Error handling for all failure scenarios
 
 ## User Story
-As a **user configuring infrastructure via ActionSpec**
-I want **dropdowns populated with my existing AWS resources**
-So that **I can select resources without memorizing IDs or ARNs**
+As a **user submitting infrastructure changes via ActionSpec**
+I want **automated PR creation with clear change summaries and warnings**
+So that **I can review destructive changes before they're applied**
 
 ## Context
 
-**Discovery**: Phase 3.4 will build a React form for editing specs. Instead of requiring users to type VPC IDs or ALB ARNs manually, we can query AWS and populate dropdowns. This reduces errors and improves UX.
+**Discovery**: Phase 3.3.2 provides GitHub write operations and reorganized spec parsing modules. Phase 3.2b provides change detection. Now we integrate them to create PRs with warnings.
 
 **Current State**:
-- aws-discovery Lambda is a stub returning hardcoded JSON
-- No AWS resource queries implemented
-- No IAM policies defined for resource discovery
-- Frontend will require manual resource ID entry
+- spec-applier Lambda is a stub returning hardcoded JSON
+- GitHub client can create branches, commit files, create PRs (Phase 3.3.2)
+- change_detector.py exists but isn't consumed by any Lambda
+- No PR description template
 
 **Desired State**:
-- aws-discovery Lambda queries real AWS resources
-- Returns structured JSON with resource IDs, names, and metadata
-- Handles missing permissions gracefully (empty arrays, not errors)
-- Handles AWS accounts with no resources (new accounts)
-- Frontend receives ready-to-use dropdown data
+- spec-applier accepts spec YAML and creates GitHub PR
+- Runs change detection (old spec vs new spec)
+- PR description includes formatted warnings from change_detector
+- Labels automatically applied: `infrastructure-change`, `automated`
+- Returns PR URL and warnings in response
+- All error scenarios handled gracefully
 
 **Why This Matters**:
-- **User Experience**: Dropdowns > manual ID entry
-- **Error Reduction**: Can't select non-existent resources
-- **Discovery**: Shows users what infrastructure exists
-- **Validation**: Can verify references before creating PR
-
-**Why Independent**:
-- Doesn't depend on GitHub integration (3.3.1, 3.3.2)
-- Doesn't block PR creation (3.3.2)
-- Can be developed and tested in parallel
-- Nice-to-have for Phase 3.4 (not blocking)
+- **User Safety**: Warns before destructive changes (WAF disable, data loss)
+- **Auditability**: All changes tracked in Git via PRs
+- **Integration Point**: Connects validation (3.2a), detection (3.2b), GitHub (3.3.2)
+- **Frontend Ready**: Provides API for Phase 3.4 React form
 
 ## Technical Requirements
 
-### 1. AWS Discovery Lambda Implementation (`backend/lambda/functions/aws-discovery/handler.py`)
+### 1. PR Description Generator
 
-Replace stub with full implementation:
+Add to spec-applier handler file (`backend/lambda/functions/spec-applier/handler.py`):
 
 ```python
-import boto3
-import json
-from typing import List, Dict, Any
-from shared.security_wrapper import secure_handler
+def generate_pr_description(old_spec: dict, new_spec: dict, warnings: list) -> str:
+    """
+    Generate formatted PR description with warnings from change_detector.
 
-# Initialize AWS clients (outside handler for reuse)
-ec2_client = boto3.client('ec2')
-elbv2_client = boto3.client('elbv2')
-wafv2_client = boto3.client('wafv2')
+    Args:
+        old_spec: Previous spec dict
+        new_spec: Updated spec dict
+        warnings: List of ChangeWarning objects from check_destructive_changes()
+
+    Returns:
+        Markdown-formatted PR description
+
+    Example Output:
+        ## ActionSpec Update
+
+        **Spec**: `my-webapp` (type: `APIService`)
+
+        ### Warnings
+        ⚠️ WARNING: Disabling WAF will remove security protection
+        🔴 CRITICAL: Changing database engine requires data migration
+
+        ### Review Checklist
+        - [ ] Reviewed all warnings above
+        - [ ] Confirmed changes are intentional
+        - [ ] Tested in staging environment (if applicable)
+
+        ---
+        🤖 Automated by [ActionSpec](https://github.com/trakrf/action-spec)
+    """
+    from spec_parser.change_detector import Severity
+
+    # Build warnings section from change_detector output
+    if warnings:
+        warnings_md = "\n".join([
+            f"{_severity_emoji(w.severity)} {w.severity.value.upper()}: {w.message}"
+            for w in warnings
+        ])
+    else:
+        warnings_md = "No warnings - changes appear safe ✅"
+
+    # Build spec summary (basic metadata)
+    spec_type = new_spec.get('spec', {}).get('type', 'unknown')
+    spec_name = new_spec.get('metadata', {}).get('name', 'unnamed')
+
+    # Combine into template
+    template = f"""## ActionSpec Update
+
+**Spec**: `{spec_name}` (type: `{spec_type}`)
+
+### Warnings
+{warnings_md}
+
+### Review Checklist
+- [ ] Reviewed all warnings above
+- [ ] Confirmed changes are intentional
+- [ ] Tested in staging environment (if applicable)
+
+---
+🤖 Automated by [ActionSpec](https://github.com/trakrf/action-spec)
+"""
+
+    return template
+
+
+def _severity_emoji(severity) -> str:
+    """Map Severity enum to emoji indicator"""
+    from spec_parser.change_detector import Severity
+
+    emoji_map = {
+        Severity.INFO: 'ℹ️',
+        Severity.WARNING: '⚠️',
+        Severity.CRITICAL: '🔴'
+    }
+    return emoji_map.get(severity, '•')
+```
+
+### 2. Spec Applier Handler Implementation
+
+Replace stub in `backend/lambda/functions/spec-applier/handler.py`:
+
+```python
+"""
+Spec Applier Lambda Function
+Phase 3.3.3: Create GitHub PRs with spec changes and destructive change warnings
+"""
+
+import json
+import os
+import sys
+import time
+import logging
+
+# Add shared layer to path (matches Phase 3.1 pattern)
+sys.path.insert(0, "/opt/python")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "shared"))
+
+from github_client import (
+    create_branch,
+    commit_file_change,
+    create_pull_request,
+    add_pr_labels,
+    fetch_spec_file,
+    GitHubError,
+    BranchExistsError,
+    PullRequestExistsError,
+)
+from spec_parser.change_detector import check_destructive_changes, Severity
+from spec_parser.parser import parse_spec
+from spec_parser.exceptions import ValidationError, ParseError
+from security_wrapper import secure_handler
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
 
 @secure_handler
-def handler(event, context):
+def lambda_handler(event, context):
     """
-    GET /aws/discover
+    POST /spec/apply
 
-    Query Parameters:
-    - resource_type: Optional filter (vpc|subnet|alb|waf|all)
-    - vpc_id: Optional VPC filter for subnets
+    Creates GitHub PR with spec changes and destructive change warnings.
 
-    Response:
+    Request Body:
     {
-      "vpcs": [
+      "repo": "trakrf/action-spec",
+      "spec_path": "specs/examples/secure-web-waf.spec.yml",
+      "new_spec_yaml": "apiVersion: actionspec/v1\n...",
+      "commit_message": "Enable WAF protection"
+    }
+
+    Response (Success):
+    {
+      "success": true,
+      "pr_url": "https://github.com/trakrf/action-spec/pull/123",
+      "pr_number": 123,
+      "branch_name": "action-spec-update-1234567890",
+      "warnings": [
         {
-          "id": "vpc-0123456789abcdef0",
-          "cidr": "10.0.0.0/16",
-          "name": "demo-vpc",
-          "is_default": false
-        }
-      ],
-      "subnets": [
-        {
-          "id": "subnet-0123456789abcdef0",
-          "vpc_id": "vpc-0123456789abcdef0",
-          "cidr": "10.0.1.0/24",
-          "availability_zone": "us-west-2a",
-          "name": "demo-subnet-public-1"
-        }
-      ],
-      "albs": [
-        {
-          "arn": "arn:aws:elasticloadbalancing:us-west-2:123456789012:loadbalancer/app/demo-alb/1234567890abcdef",
-          "name": "demo-alb",
-          "dns_name": "demo-alb-1234567890.us-west-2.elb.amazonaws.com",
-          "vpc_id": "vpc-0123456789abcdef0",
-          "state": "active"
-        }
-      ],
-      "waf_webacls": [
-        {
-          "id": "12345678-1234-1234-1234-123456789012",
-          "name": "demo-waf",
-          "arn": "arn:aws:wafv2:us-west-2:123456789012:regional/webacl/demo-waf/12345678-1234-1234-1234-123456789012",
-          "scope": "REGIONAL",
-          "managed_rule_count": 3
+          "severity": "warning",
+          "message": "⚠️ WARNING: Disabling WAF will remove security protection",
+          "field_path": "spec.security.waf.enabled"
         }
       ]
     }
-    """
 
-    # Parse query parameters
-    params = event.get('queryStringParameters') or {}
-    resource_type = params.get('resource_type', 'all')
-    vpc_id = params.get('vpc_id')
-
-    # Discover resources
-    results = {}
-
-    if resource_type in ['vpc', 'all']:
-        results['vpcs'] = discover_vpcs()
-
-    if resource_type in ['subnet', 'all']:
-        results['subnets'] = discover_subnets(vpc_id)
-
-    if resource_type in ['alb', 'all']:
-        results['albs'] = discover_albs()
-
-    if resource_type in ['waf', 'all']:
-        results['waf_webacls'] = discover_waf_webacls()
-
-    return {
-        'statusCode': 200,
-        'body': json.dumps(results)
+    Response (Validation Error):
+    {
+      "success": false,
+      "error": "Validation failed",
+      "details": "..."
     }
-```
-
-### 2. Resource Discovery Functions
-
-```python
-def discover_vpcs() -> List[Dict[str, Any]]:
-    """
-    Discover all VPCs in the current region.
-
-    Returns:
-        List of VPC dictionaries with keys:
-        - id: VPC ID (e.g., "vpc-0123...")
-        - cidr: CIDR block (e.g., "10.0.0.0/16")
-        - name: VPC name from tags (or "unnamed")
-        - is_default: Boolean indicating default VPC
-
-    Error Handling:
-        - Missing permissions: Returns empty list (no exception)
-        - No VPCs: Returns empty list
-        - API errors: Logs error, returns empty list
     """
     try:
-        response = ec2_client.describe_vpcs()
-        vpcs = []
+        # 1. Parse request body
+        body = json.loads(event['body'])
+        repo_name = body['repo']
+        spec_path = body['spec_path']
+        new_spec_yaml = body['new_spec_yaml']
+        commit_message = body.get('commit_message', 'Update ActionSpec configuration')
 
-        for vpc in response.get('Vpcs', []):
-            # Extract name from tags
-            name = _extract_name_tag(vpc.get('Tags', []))
+        logger.info(f"Processing spec update for {repo_name}:{spec_path}")
 
-            vpcs.append({
-                'id': vpc['VpcId'],
-                'cidr': vpc['CidrBlock'],
-                'name': name,
-                'is_default': vpc.get('IsDefault', False)
-            })
-
-        return sorted(vpcs, key=lambda v: v['name'])
-
-    except ec2_client.exceptions.ClientError as e:
-        _log_discovery_error('VPCs', e)
-        return []
-    except Exception as e:
-        _log_discovery_error('VPCs', e)
-        return []
-
-def discover_subnets(vpc_id: str = None) -> List[Dict[str, Any]]:
-    """
-    Discover subnets in current region, optionally filtered by VPC.
-
-    Args:
-        vpc_id: Optional VPC ID filter
-
-    Returns:
-        List of subnet dictionaries with keys:
-        - id: Subnet ID
-        - vpc_id: Parent VPC ID
-        - cidr: CIDR block
-        - availability_zone: AZ name
-        - name: Subnet name from tags
-
-    Error Handling:
-        - Missing permissions: Returns empty list
-        - Invalid vpc_id: Returns empty list (no exception)
-        - No subnets: Returns empty list
-    """
-    try:
-        filters = []
-        if vpc_id:
-            filters.append({'Name': 'vpc-id', 'Values': [vpc_id]})
-
-        response = ec2_client.describe_subnets(Filters=filters)
-        subnets = []
-
-        for subnet in response.get('Subnets', []):
-            name = _extract_name_tag(subnet.get('Tags', []))
-
-            subnets.append({
-                'id': subnet['SubnetId'],
-                'vpc_id': subnet['VpcId'],
-                'cidr': subnet['CidrBlock'],
-                'availability_zone': subnet['AvailabilityZone'],
-                'name': name
-            })
-
-        return sorted(subnets, key=lambda s: s['name'])
-
-    except ec2_client.exceptions.ClientError as e:
-        _log_discovery_error('Subnets', e)
-        return []
-    except Exception as e:
-        _log_discovery_error('Subnets', e)
-        return []
-
-def discover_albs() -> List[Dict[str, Any]]:
-    """
-    Discover Application Load Balancers in current region.
-
-    Returns:
-        List of ALB dictionaries with keys:
-        - arn: Full ALB ARN
-        - name: ALB name
-        - dns_name: DNS name for ALB
-        - vpc_id: VPC where ALB is deployed
-        - state: ALB state (active, provisioning, failed)
-
-    Error Handling:
-        - Missing permissions: Returns empty list
-        - No ALBs: Returns empty list
-    """
-    try:
-        response = elbv2_client.describe_load_balancers()
-        albs = []
-
-        for lb in response.get('LoadBalancers', []):
-            # Filter to only Application Load Balancers (not NLB, GLB)
-            if lb.get('Type') == 'application':
-                albs.append({
-                    'arn': lb['LoadBalancerArn'],
-                    'name': lb['LoadBalancerName'],
-                    'dns_name': lb['DNSName'],
-                    'vpc_id': lb['VpcId'],
-                    'state': lb['State']['Code']
+        # 2. Validate new spec (will raise ValidationError if invalid)
+        try:
+            new_spec = parse_spec(new_spec_yaml)
+        except (ValidationError, ParseError) as e:
+            logger.warning(f"Spec validation failed: {e}")
+            return {
+                'statusCode': 400,
+                'body': json.dumps({
+                    'success': False,
+                    'error': 'Validation failed',
+                    'details': str(e)
                 })
+            }
 
-        return sorted(albs, key=lambda a: a['name'])
+        # 3. Fetch old spec from GitHub
+        try:
+            old_spec_yaml = fetch_spec_file(repo_name, spec_path)
+            old_spec = parse_spec(old_spec_yaml)
+        except FileNotFoundError as e:
+            logger.error(f"Old spec not found: {e}")
+            return {
+                'statusCode': 404,
+                'body': json.dumps({
+                    'success': False,
+                    'error': 'Spec file not found',
+                    'details': f"File '{spec_path}' not found in {repo_name}"
+                })
+            }
 
-    except elbv2_client.exceptions.ClientError as e:
-        _log_discovery_error('ALBs', e)
-        return []
-    except Exception as e:
-        _log_discovery_error('ALBs', e)
-        return []
+        # 4. Run change detection (KEY INTEGRATION with Phase 3.2b!)
+        warnings = check_destructive_changes(old_spec, new_spec)
+        logger.info(f"Change detection found {len(warnings)} warning(s)")
 
-def discover_waf_webacls() -> List[Dict[str, Any]]:
-    """
-    Discover WAF WebACLs in current region (REGIONAL scope).
+        # 5. Create feature branch with timestamp for uniqueness
+        timestamp = int(time.time())
+        branch_name = f"action-spec-update-{timestamp}"
 
-    Returns:
-        List of WebACL dictionaries with keys:
-        - id: WebACL ID
-        - name: WebACL name
-        - arn: Full WebACL ARN
-        - scope: REGIONAL (CloudFront WebACLs not included)
-        - managed_rule_count: Number of managed rule groups
+        try:
+            branch_sha = create_branch(repo_name, branch_name, base_ref='main')
+            logger.info(f"Created branch {branch_name} (SHA: {branch_sha})")
+        except BranchExistsError:
+            # Retry with random suffix if timestamp collision
+            import random
+            suffix = random.randint(1000, 9999)
+            branch_name = f"action-spec-update-{timestamp}-{suffix}"
+            branch_sha = create_branch(repo_name, branch_name, base_ref='main')
+            logger.info(f"Created branch {branch_name} with random suffix (SHA: {branch_sha})")
 
-    Error Handling:
-        - Missing permissions: Returns empty list
-        - No WebACLs: Returns empty list
+        # 6. Commit spec changes to branch
+        commit_sha = commit_file_change(
+            repo_name,
+            branch_name,
+            spec_path,
+            new_spec_yaml,
+            commit_message
+        )
+        logger.info(f"Committed changes (SHA: {commit_sha})")
 
-    Note:
-        - Only discovers REGIONAL scope (for API Gateway, ALB)
-        - CLOUDFRONT scope WebACLs require global endpoint (future)
-    """
-    try:
-        response = wafv2_client.list_web_acls(Scope='REGIONAL')
-        webacls = []
+        # 7. Generate PR description with warnings
+        pr_body = generate_pr_description(old_spec, new_spec, warnings)
+        pr_title = f"ActionSpec Update: {commit_message}"
 
-        for webacl in response.get('WebACLs', []):
-            # Get detailed info for rule count
-            details = wafv2_client.get_web_acl(
-                Scope='REGIONAL',
-                Id=webacl['Id'],
-                Name=webacl['Name']
+        # 8. Create pull request
+        try:
+            pr_info = create_pull_request(
+                repo_name,
+                pr_title,
+                pr_body,
+                head_branch=branch_name,
+                base_branch='main'
             )
+            logger.info(f"Created PR #{pr_info['number']}: {pr_info['url']}")
+        except PullRequestExistsError:
+            # PR already exists for this branch (edge case)
+            # This shouldn't happen with timestamp-based names, but handle gracefully
+            logger.warning(f"PR already exists for branch {branch_name}")
+            return {
+                'statusCode': 409,
+                'body': json.dumps({
+                    'success': False,
+                    'error': 'Pull request already exists',
+                    'details': f"A PR already exists for branch '{branch_name}'"
+                })
+            }
 
-            managed_rule_count = len([
-                rule for rule in details['WebACL'].get('Rules', [])
-                if 'ManagedRuleGroupStatement' in rule.get('Statement', {})
-            ])
+        # 9. Add labels for filtering and automation
+        try:
+            add_pr_labels(repo_name, pr_info['number'], ['infrastructure-change', 'automated'])
+            logger.info(f"Added labels to PR #{pr_info['number']}")
+        except Exception as e:
+            # Label addition is non-critical - log but don't fail
+            logger.warning(f"Failed to add labels: {e}")
 
-            webacls.append({
-                'id': webacl['Id'],
-                'name': webacl['Name'],
-                'arn': webacl['ARN'],
-                'scope': 'REGIONAL',
-                'managed_rule_count': managed_rule_count
+        # 10. Return response with PR URL and warnings
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'success': True,
+                'pr_url': pr_info['url'],
+                'pr_number': pr_info['number'],
+                'branch_name': branch_name,
+                'warnings': [
+                    {
+                        'severity': w.severity.value,  # Severity is str Enum, .value gives "warning"/"critical"/"info"
+                        'message': w.message,
+                        'field_path': w.field_path
+                    }
+                    for w in warnings
+                ]
             })
+        }
 
-        return sorted(webacls, key=lambda w: w['name'])
-
-    except wafv2_client.exceptions.ClientError as e:
-        _log_discovery_error('WAF WebACLs', e)
-        return []
+    except GitHubError as e:
+        logger.error(f"GitHub error: {e}")
+        return {
+            'statusCode': 502,
+            'body': json.dumps({
+                'success': False,
+                'error': 'GitHub API error',
+                'details': str(e)
+            })
+        }
     except Exception as e:
-        _log_discovery_error('WAF WebACLs', e)
-        return []
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'success': False,
+                'error': 'Internal server error',
+                'details': str(e)
+            })
+        }
 
-# Helper functions
 
-def _extract_name_tag(tags: List[Dict[str, str]]) -> str:
-    """
-    Extract 'Name' tag from AWS resource tags.
+# Helper functions (defined above in section 1)
+def generate_pr_description(old_spec: dict, new_spec: dict, warnings: list) -> str:
+    # ... (see section 1 for full implementation)
+    pass
 
-    Args:
-        tags: List of tag dicts with 'Key' and 'Value'
 
-    Returns:
-        str: Name tag value or "unnamed" if not found
-    """
-    for tag in tags:
-        if tag.get('Key') == 'Name':
-            return tag.get('Value', 'unnamed')
-    return 'unnamed'
-
-def _log_discovery_error(resource_type: str, error: Exception):
-    """
-    Log discovery errors without failing the request.
-
-    Args:
-        resource_type: Type of resource being discovered
-        error: Exception that occurred
-
-    Note:
-        - Logs at WARNING level (not ERROR)
-        - Helps debug permission issues
-        - Doesn't expose sensitive info
-    """
-    import logging
-    logger = logging.getLogger()
-
-    if hasattr(error, 'response'):
-        error_code = error.response.get('Error', {}).get('Code', 'Unknown')
-        logger.warning(f"Failed to discover {resource_type}: {error_code}")
-    else:
-        logger.warning(f"Failed to discover {resource_type}: {type(error).__name__}")
+def _severity_emoji(severity) -> str:
+    # ... (see section 1 for full implementation)
+    pass
 ```
 
-### 3. IAM Permissions Required
+### 3. SAM Template Updates (`template.yaml`)
 
-Document in `docs/IAM_POLICIES.md`:
-
-```markdown
-# AWS IAM Policies for ActionSpec Lambda Functions
-
-## AWS Discovery Lambda Permissions
-
-The `aws-discovery` Lambda requires read-only permissions to query AWS resources.
-
-### Minimal IAM Policy
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "DiscoverVPCResources",
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DescribeVpcs",
-        "ec2:DescribeSubnets"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "DiscoverLoadBalancers",
-      "Effect": "Allow",
-      "Action": [
-        "elasticloadbalancing:DescribeLoadBalancers"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "DiscoverWAFResources",
-      "Effect": "Allow",
-      "Action": [
-        "wafv2:ListWebACLs",
-        "wafv2:GetWebACL"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
-
-### Why These Permissions?
-
-- **ec2:DescribeVpcs**: List VPCs for network configuration
-- **ec2:DescribeSubnets**: List subnets for compute placement
-- **elasticloadbalancing:DescribeLoadBalancers**: List ALBs for WAF attachment
-- **wafv2:ListWebACLs**: List existing WAF configurations
-- **wafv2:GetWebACL**: Get WAF details (rule counts, etc.)
-
-### Permission Scope
-
-All permissions use `"Resource": "*"` because:
-- Describe operations don't support resource-level permissions
-- Read-only operations have minimal security risk
-- Simplifies deployment (no resource ARNs needed)
-
-### Testing Permissions
-
-Validate Lambda has correct permissions:
-
-```bash
-# Invoke discovery Lambda
-aws lambda invoke \
-  --function-name actionspec-aws-discovery \
-  --payload '{}' \
-  response.json
-
-# Check response
-cat response.json | jq .
-
-# Expected: JSON with vpcs, subnets, albs, waf_webacls arrays
-# If empty arrays: Either no resources exist OR missing permissions
-```
-
-### Troubleshooting
-
-**Empty arrays in response:**
-1. Check CloudWatch logs for permission errors
-2. Verify Lambda execution role has policy attached
-3. Confirm resources exist in same region as Lambda
-4. Test with AWS CLI using same role
-
-**Permission errors in logs:**
-```
-Failed to discover VPCs: AccessDenied
-```
-- Add missing permission to Lambda execution role
-- Verify IAM policy is attached (not just created)
-- Check for SCPs or permission boundaries blocking access
-```
-
-### 4. API Gateway Integration
-
-Update SAM template:
-
+**Update SpecApplierFunction**:
 ```yaml
-AwsDiscoveryFunction:
+SpecApplierFunction:
   Type: AWS::Serverless::Function
   Properties:
-    Handler: handler.handler
+    FunctionName: !Sub ${AWS::StackName}-spec-applier
+    CodeUri: backend/lambda/functions/spec-applier/
+    Handler: handler.lambda_handler  # CHANGED: Must match function name
+    Description: Apply spec changes via GitHub PR (Phase 3.3.3)
+    Policies:
+      - S3CrudPolicy:
+          BucketName: !Ref SpecsBucket
+      - Statement:
+          - Sid: SSMGetParameter
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+            Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${GithubTokenParamName}
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*
     Events:
-      DiscoverResources:
+      ApplySpecApi:  # CHANGED: Event name
         Type: Api
         Properties:
           RestApiId: !Ref ActionSpecApi
-          Path: /aws/discover
-          Method: GET
-    Policies:
-      - Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Action:
-              - ec2:DescribeVpcs
-              - ec2:DescribeSubnets
-              - elasticloadbalancing:DescribeLoadBalancers
-              - wafv2:ListWebACLs
-              - wafv2:GetWebACL
-            Resource: '*'
+          Path: /spec/apply  # CHANGED: From /api/submit to /spec/apply
+          Method: POST
+          Auth:
+            ApiKeyRequired: true
 ```
 
-### 5. Testing Requirements
+### 4. Testing Requirements
 
-**Unit Tests (pytest):**
+**Unit Tests** (`backend/tests/test_spec_applier.py`):
 
 ```python
-# test_aws_discovery.py
+"""Tests for spec-applier Lambda handler (Phase 3.3.3)"""
+import pytest
+import json
+from unittest.mock import Mock, patch, MagicMock
 
-def test_discover_vpcs_success(mock_ec2):
-    """Test VPC discovery returns formatted results"""
-    mock_ec2.describe_vpcs.return_value = {
-        'Vpcs': [
-            {
-                'VpcId': 'vpc-123',
-                'CidrBlock': '10.0.0.0/16',
-                'IsDefault': False,
-                'Tags': [{'Key': 'Name', 'Value': 'demo-vpc'}]
-            }
-        ]
+
+@patch('backend.lambda.functions.spec_applier.handler.create_pull_request')
+@patch('backend.lambda.functions.spec_applier.handler.commit_file_change')
+@patch('backend.lambda.functions.spec_applier.handler.create_branch')
+@patch('backend.lambda.functions.spec_applier.handler.check_destructive_changes')
+@patch('backend.lambda.functions.spec_applier.handler.fetch_spec_file')
+@patch('backend.lambda.functions.spec_applier.handler.parse_spec')
+def test_handler_creates_pr_successfully(
+    mock_parse, mock_fetch, mock_check, mock_branch, mock_commit, mock_pr
+):
+    """Test complete PR creation flow end-to-end"""
+    from backend.lambda.functions.spec_applier.handler import lambda_handler
+
+    # Setup mocks
+    mock_parse.return_value = {"metadata": {"name": "test"}, "spec": {"type": "StaticSite"}}
+    mock_fetch.return_value = "old: spec"
+    mock_check.return_value = []  # No warnings
+    mock_branch.return_value = "abc123"
+    mock_commit.return_value = "def456"
+    mock_pr.return_value = {
+        'number': 42,
+        'url': 'https://github.com/test/repo/pull/42',
+        'api_url': 'https://api.github.com/repos/test/repo/pulls/42'
     }
 
-    vpcs = discover_vpcs()
+    # Test event
+    event = {
+        'body': json.dumps({
+            'repo': 'test/repo',
+            'spec_path': 'specs/test.yml',
+            'new_spec_yaml': 'new: spec',
+            'commit_message': 'Test update'
+        })
+    }
 
-    assert len(vpcs) == 1
-    assert vpcs[0]['id'] == 'vpc-123'
-    assert vpcs[0]['name'] == 'demo-vpc'
+    # Execute
+    response = lambda_handler(event, {})
 
-def test_discover_vpcs_missing_permissions(mock_ec2):
-    """Test VPC discovery with AccessDenied returns empty list (not error)"""
-    from botocore.exceptions import ClientError
-
-    mock_ec2.describe_vpcs.side_effect = ClientError(
-        {'Error': {'Code': 'AccessDenied'}},
-        'DescribeVpcs'
-    )
-
-    vpcs = discover_vpcs()
-    assert vpcs == []  # Graceful degradation
-
-def test_discover_vpcs_no_resources(mock_ec2):
-    """Test VPC discovery with no VPCs returns empty list"""
-    mock_ec2.describe_vpcs.return_value = {'Vpcs': []}
-    vpcs = discover_vpcs()
-    assert vpcs == []
-
-def test_discover_subnets_filtered_by_vpc(mock_ec2):
-    """Test subnet discovery filters by VPC ID"""
-    pass
-
-def test_discover_albs_filters_application_only(mock_elbv2):
-    """Test ALB discovery excludes NLBs and GLBs"""
-    pass
-
-def test_discover_waf_regional_scope_only(mock_wafv2):
-    """Test WAF discovery only returns REGIONAL scope"""
-    pass
-
-def test_handler_all_resources(mock_ec2, mock_elbv2, mock_wafv2):
-    """Test handler returns all resource types"""
-    event = {'queryStringParameters': None}
-    response = handler(event, None)
-
+    # Verify
+    assert response['statusCode'] == 200
     body = json.loads(response['body'])
-    assert 'vpcs' in body
-    assert 'subnets' in body
-    assert 'albs' in body
-    assert 'waf_webacls' in body
+    assert body['success'] is True
+    assert body['pr_number'] == 42
+    assert 'pull/42' in body['pr_url']
 
-def test_handler_filters_by_resource_type(mock_ec2):
-    """Test handler filters to specific resource type"""
-    event = {'queryStringParameters': {'resource_type': 'vpc'}}
-    response = handler(event, None)
 
+@patch('backend.lambda.functions.spec_applier.handler.check_destructive_changes')
+@patch('backend.lambda.functions.spec_applier.handler.fetch_spec_file')
+@patch('backend.lambda.functions.spec_applier.handler.parse_spec')
+def test_handler_includes_warnings_in_response(mock_parse, mock_fetch, mock_check):
+    """Test warnings from change_detector appear in response"""
+    from backend.lambda.functions.spec_applier.handler import lambda_handler
+    from spec_parser.change_detector import ChangeWarning, Severity
+
+    # Setup mocks with warnings
+    mock_parse.return_value = {"metadata": {"name": "test"}, "spec": {"type": "StaticSite"}}
+    mock_fetch.return_value = "old: spec"
+    mock_check.return_value = [
+        ChangeWarning(Severity.WARNING, "Test warning", "spec.test")
+    ]
+
+    event = {
+        'body': json.dumps({
+            'repo': 'test/repo',
+            'spec_path': 'specs/test.yml',
+            'new_spec_yaml': 'new: spec',
+        })
+    }
+
+    with patch('backend.lambda.functions.spec_applier.handler.create_branch'), \
+         patch('backend.lambda.functions.spec_applier.handler.commit_file_change'), \
+         patch('backend.lambda.functions.spec_applier.handler.create_pull_request') as mock_pr:
+
+        mock_pr.return_value = {'number': 1, 'url': 'http://test', 'api_url': 'http://api'}
+
+        response = lambda_handler(event, {})
+
+        # Verify warnings in response
+        body = json.loads(response['body'])
+        assert len(body['warnings']) == 1
+        assert body['warnings'][0]['severity'] == 'warning'
+        assert 'Test warning' in body['warnings'][0]['message']
+
+
+@patch('backend.lambda.functions.spec_applier.handler.parse_spec')
+def test_handler_validates_new_spec(mock_parse):
+    """Test invalid spec rejected before PR creation"""
+    from backend.lambda.functions.spec_applier.handler import lambda_handler
+    from spec_parser.exceptions import ValidationError
+
+    # Setup mock to raise validation error
+    mock_parse.side_effect = ValidationError("Invalid spec")
+
+    event = {
+        'body': json.dumps({
+            'repo': 'test/repo',
+            'spec_path': 'specs/test.yml',
+            'new_spec_yaml': 'invalid: yaml',
+        })
+    }
+
+    response = lambda_handler(event, {})
+
+    # Verify error response
+    assert response['statusCode'] == 400
     body = json.loads(response['body'])
-    assert 'vpcs' in body
-    assert 'subnets' not in body
+    assert body['success'] is False
+    assert 'Validation failed' in body['error']
 
-def test_extract_name_tag_present():
-    """Test name extraction from tags"""
-    tags = [{'Key': 'Name', 'Value': 'my-vpc'}]
-    assert _extract_name_tag(tags) == 'my-vpc'
 
-def test_extract_name_tag_missing():
-    """Test name extraction with no Name tag"""
-    tags = [{'Key': 'Environment', 'Value': 'prod'}]
-    assert _extract_name_tag(tags) == 'unnamed'
+@patch('backend.lambda.functions.spec_applier.handler.create_branch')
+@patch('backend.lambda.functions.spec_applier.handler.check_destructive_changes')
+@patch('backend.lambda.functions.spec_applier.handler.fetch_spec_file')
+@patch('backend.lambda.functions.spec_applier.handler.parse_spec')
+def test_handler_handles_branch_exists_error(mock_parse, mock_fetch, mock_check, mock_branch):
+    """Test graceful handling when branch already exists (retry with random suffix)"""
+    from backend.lambda.functions.spec_applier.handler import lambda_handler
+    from github_client import BranchExistsError
+
+    # Setup mocks
+    mock_parse.return_value = {"metadata": {"name": "test"}, "spec": {"type": "StaticSite"}}
+    mock_fetch.return_value = "old: spec"
+    mock_check.return_value = []
+
+    # First call raises BranchExistsError, second succeeds
+    mock_branch.side_effect = [BranchExistsError("exists"), "abc123"]
+
+    event = {
+        'body': json.dumps({
+            'repo': 'test/repo',
+            'spec_path': 'specs/test.yml',
+            'new_spec_yaml': 'new: spec',
+        })
+    }
+
+    with patch('backend.lambda.functions.spec_applier.handler.commit_file_change'), \
+         patch('backend.lambda.functions.spec_applier.handler.create_pull_request') as mock_pr:
+
+        mock_pr.return_value = {'number': 1, 'url': 'http://test', 'api_url': 'http://api'}
+
+        response = lambda_handler(event, {})
+
+        # Verify retry logic worked
+        assert response['statusCode'] == 200
+        assert mock_branch.call_count == 2  # Called twice (first failed, second succeeded)
+
+
+@patch('backend.lambda.functions.spec_applier.handler.create_branch')
+@patch('backend.lambda.functions.spec_applier.handler.check_destructive_changes')
+@patch('backend.lambda.functions.spec_applier.handler.fetch_spec_file')
+@patch('backend.lambda.functions.spec_applier.handler.parse_spec')
+def test_handler_handles_github_api_failure(mock_parse, mock_fetch, mock_check, mock_branch):
+    """Test error handling for GitHub API failures"""
+    from backend.lambda.functions.spec_applier.handler import lambda_handler
+    from github_client import GitHubError
+
+    # Setup mocks
+    mock_parse.return_value = {"metadata": {"name": "test"}, "spec": {"type": "StaticSite"}}
+    mock_fetch.return_value = "old: spec"
+    mock_check.return_value = []
+    mock_branch.side_effect = GitHubError("API error")
+
+    event = {
+        'body': json.dumps({
+            'repo': 'test/repo',
+            'spec_path': 'specs/test.yml',
+            'new_spec_yaml': 'new: spec',
+        })
+    }
+
+    response = lambda_handler(event, {})
+
+    # Verify error response
+    assert response['statusCode'] == 502
+    body = json.loads(response['body'])
+    assert body['success'] is False
+    assert 'GitHub API error' in body['error']
 ```
 
-**Integration Tests (Manual):**
-- [ ] Deploy to AWS and test against real account
-- [ ] Verify response with resources present
-- [ ] Verify response with no resources (new account)
-- [ ] Test with read-only IAM role (confirm no write operations)
+**PR Description Generator Tests** (`backend/tests/test_pr_description_generator.py`):
+
+```python
+"""Tests for PR description generator (Phase 3.3.3)"""
+from backend.lambda.functions.spec_applier.handler import generate_pr_description
+from spec_parser.change_detector import ChangeWarning, Severity
+
+
+def test_generate_pr_description_with_warnings():
+    """Test PR description includes warnings from change_detector"""
+    old_spec = {"metadata": {"name": "test"}, "spec": {"type": "StaticSite"}}
+    new_spec = {"metadata": {"name": "test"}, "spec": {"type": "StaticSite"}}
+
+    warnings = [
+        ChangeWarning(Severity.WARNING, "⚠️ WARNING: WAF disabled", "spec.security.waf.enabled"),
+        ChangeWarning(Severity.CRITICAL, "🔴 CRITICAL: Engine changed", "spec.data.engine")
+    ]
+    description = generate_pr_description(old_spec, new_spec, warnings)
+
+    assert "⚠️ WARNING: WAF disabled" in description
+    assert "🔴 CRITICAL: Engine changed" in description
+    assert "Review Checklist" in description
+    assert "ActionSpec Update" in description
+
+
+def test_generate_pr_description_no_warnings():
+    """Test PR description when no warnings (safe changes)"""
+    old_spec = {"metadata": {"name": "test"}, "spec": {"type": "StaticSite"}}
+    new_spec = {"metadata": {"name": "test"}, "spec": {"type": "StaticSite"}}
+
+    description = generate_pr_description(old_spec, new_spec, [])
+
+    assert "No warnings - changes appear safe ✅" in description
+    assert "Review Checklist" in description
+
+
+def test_generate_pr_description_includes_spec_metadata():
+    """Test PR description includes spec name and type"""
+    old_spec = {"metadata": {"name": "my-app"}, "spec": {"type": "APIService"}}
+    new_spec = {"metadata": {"name": "my-app"}, "spec": {"type": "APIService"}}
+
+    description = generate_pr_description(old_spec, new_spec, [])
+
+    assert "`my-app`" in description
+    assert "`APIService`" in description
+```
 
 ## Validation Criteria
 
+### Prerequisites (Before Implementation):
+- [ ] Phase 3.3.2 complete (GitHub write ops available, spec_parser reorganized)
+- [ ] Read existing handler.py stub to understand structure
+- [ ] Read Phase 3.1 test patterns for Lambda handler testing
+
 ### Immediate (Measured at PR Merge):
-- [ ] discover_vpcs() returns list of VPCs with name, CIDR, ID
-- [ ] discover_subnets() filters by VPC ID correctly
-- [ ] discover_albs() only returns Application Load Balancers
-- [ ] discover_waf_webacls() returns REGIONAL scope WebACLs
-- [ ] Missing permissions return empty arrays (no exceptions)
-- [ ] No resources return empty arrays (not errors)
-- [ ] Unit tests cover all error scenarios (8+ tests)
-- [ ] Test coverage > 85% for aws-discovery handler
-- [ ] IAM policy documented in docs/IAM_POLICIES.md
-
-### Integration Tests (Manual):
-- [ ] Test against AWS account with resources → Returns populated arrays
-- [ ] Test against new AWS account → Returns empty arrays (no errors)
-- [ ] Test with missing permissions → Returns empty arrays, logs warning
-- [ ] Response JSON structure matches frontend expectations
-
-### Post-Merge (Phase 3.4 Validation):
-- [ ] React frontend calls /aws/discover successfully
-- [ ] Dropdowns populated with real AWS resources
-- [ ] Empty arrays don't break UI (graceful handling)
+- [ ] **Handler implementation complete** - Full spec-applier logic replacing stub
+- [ ] **PR description generator implemented** - With emoji severity indicators
+- [ ] **SAM template updated** - Path changed to /spec/apply, handler name to lambda_handler
+- [ ] **5 handler tests pass** - test_spec_applier.py
+- [ ] **3 PR generator tests pass** - test_pr_description_generator.py
+- [ ] **Test coverage > 85%** - for handler and generator functions
+- [ ] **Change detector integration working** - Warnings appear in PR and response
+- [ ] **Black formatting clean** - cd backend && black --check lambda/
+- [ ] **Mypy types clean** - cd backend && mypy lambda/ --ignore-missing-imports
+- [ ] **All validation gates pass** - lint, typecheck, test from spec/stack.md
 
 ## Success Metrics
 
 **Technical:**
-- < 2s response time for full discovery (all resource types)
-- < 500ms response time for single resource type
-- 100% test pass rate
-- Zero exceptions for missing permissions
+- Handler creates PRs with formatted descriptions
+- Warnings from change_detector appear correctly
+- All error scenarios handled gracefully
+- Test coverage meets >85% threshold
 
-**User Experience:**
-- Users see existing resources in dropdowns
-- No manual ID entry required
-- Clear messaging when no resources exist
+**Integration:**
+- Phase 3.3.4 can run manual integration tests
+- API endpoint ready for Phase 3.4 frontend
 
 ## Dependencies
-- **Requires**: Phase 3.1 (SAM template with Lambda stub)
-- **Independent**: Can run parallel with 3.3.1 and 3.3.2
-- **Nice-to-have for**: Phase 3.4 (frontend dropdowns)
+- **Requires**: Phase 3.3.2 (GitHub write ops, spec_parser in shared/)
+- **Requires**: Phase 3.2b (change_detector.py)
+- **Requires**: Phase 3.2a (parser.py)
+- **Blocks**: Phase 3.3.4 (manual integration tests)
+- **Blocks**: Phase 3.4 (frontend needs this API)
 
 ## Edge Cases to Handle
 
-1. **No Resources Exist** (New AWS Account):
-   - Scenario: User just created AWS account
-   - Response: Return empty arrays for all resource types
-   - UI Handling: Show "No resources found" message
+1. **Invalid New Spec**:
+   - Detection: ValidationError from parse_spec()
+   - Response: Return 400 with error details
+   - **Do NOT create PR** when validation fails
 
-2. **Missing IAM Permissions**:
-   - Scenario: Lambda role missing ec2:DescribeVpcs
-   - Response: Log warning, return empty array for VPCs
-   - Other Resources: Continue querying (partial results OK)
+2. **Old Spec Not Found**:
+   - Detection: FileNotFoundError from fetch_spec_file()
+   - Response: Return 404 with helpful message
 
-3. **Large Number of Resources** (1000+ VPCs):
-   - Scenario: Enterprise account with many resources
-   - Response: Paginate through results (boto3 handles automatically)
-   - Performance: May exceed 2s SLA (document limitation)
+3. **Branch Already Exists** (timestamp collision):
+   - Detection: BranchExistsError from create_branch()
+   - Response: Retry with random suffix (e.g., timestamp-1234)
 
-4. **Resources in Different Region**:
-   - Scenario: Resources exist but in us-east-1, Lambda in us-west-2
-   - Response: Return empty arrays (region-specific)
-   - Documentation: Note Lambda discovers same-region resources only
+4. **PR Already Exists** (shouldn't happen with timestamps):
+   - Detection: PullRequestExistsError
+   - Response: Return 409 Conflict with message
 
-5. **Unnamed Resources** (No Name Tag):
-   - Scenario: Resources created without Name tag
-   - Response: Use "unnamed" as name, include ID
-   - Sorting: Unnamed resources sort to top
+5. **GitHub API Failure Mid-Operation**:
+   - Detection: GitHubError exceptions
+   - Response: Return 502 Bad Gateway
+   - **Note**: Branch may be left orphaned (user can delete manually)
 
-6. **Network Load Balancers Mixed with ALBs**:
-   - Scenario: describe_load_balancers returns NLBs too
-   - Response: Filter to Type == 'application' only
-   - Why: WAF only attaches to ALBs, not NLBs
+6. **Label Addition Fails** (non-critical):
+   - Detection: Exception in add_pr_labels()
+   - Response: Log warning but don't fail request
+   - PR is still created successfully
 
 ## Implementation Notes
 
-### Why Graceful Degradation (Empty Arrays)?
-- User Experience: Partial results > complete failure
-- Error Recovery: UI can handle empty arrays
-- Debugging: Logs indicate permission issues
-- Resilience: One API failure doesn't break entire response
+### Why Timestamp-Based Branch Names?
+- **Uniqueness**: Prevents collisions for simultaneous submissions
+- **Traceability**: Easy to identify when change was submitted
+- **Chronological sorting**: Branches sort by time
+- **Human-readable**: Better than UUIDs
 
-### Why REGIONAL Scope Only for WAF?
-- API Gateway: Uses REGIONAL WebACLs
-- ALB: Uses REGIONAL WebACLs
-- CloudFront: Uses CLOUDFRONT WebACLs (different endpoint)
-- Simplification: Phase 1 focuses on regional resources
+### Why Include Warnings in Response AND PR?
+- **Frontend UX**: Can display warnings immediately before user even clicks PR link
+- **PR Documentation**: Warnings preserved in GitHub history
+- **Redundancy**: Users see warnings in both places
 
-### Why Sort by Name?
-- User Experience: Alphabetical order easier to scan
-- Predictability: Consistent ordering across requests
-- Unnamed First: Easy to spot resources needing tags
+### Why Make Label Addition Non-Critical?
+- PR creation is the primary goal
+- Labels are nice-to-have for filtering
+- Don't fail the entire request if label API has issues
 
-### Why Cache boto3 Clients Outside Handler?
-- Performance: Reuse connections across invocations
-- Best Practice: AWS Lambda recommends global client initialization
-- Cost: Reduces SDK overhead
-
-## Future Enhancements (Post-Phase 3.3.3)
-
-Not in scope for this phase but documented for future work:
-
-1. **Response Caching** (ElastiCache/DynamoDB):
-   - Benefit: Reduce AWS API calls, faster responses
-   - TTL: 5-minute cache (resources don't change often)
-   - Effort: 4-6 hours
-
-2. **Cross-Region Discovery**:
-   - Benefit: Show resources from all regions
-   - Implementation: Query multiple regions in parallel
-   - Effort: 3-4 hours
-
-3. **CloudFront WAF WebACLs**:
-   - Benefit: Discover global WAF configurations
-   - Implementation: Query us-east-1 CLOUDFRONT scope
-   - Effort: 2-3 hours
-
-4. **Target Group Discovery**:
-   - Benefit: Show ALB target groups for compute selection
-   - Implementation: Add describe_target_groups()
-   - Effort: 2 hours
-
-5. **Security Group Discovery**:
-   - Benefit: Show security groups for network configuration
-   - Implementation: Add describe_security_groups()
-   - Effort: 2 hours
-
-6. **Resource Filtering by Tags**:
-   - Benefit: Only show resources tagged for ActionSpec
-   - Implementation: Add tag filter to describe calls
-   - Effort: 1-2 hours
-
-## Conversation References
-
-**Key Insights:**
-- "Phase 3.3.3 is independent - can run parallel to 3.3.2" - Execution strategy
-- "Nice-to-have for Phase 3.4 (not blocking)" - Priority clarification
-- "Dropdowns populated with existing resources" - User experience goal
-
-**Decisions Made:**
-- Graceful degradation (empty arrays) for missing permissions
-- REGIONAL scope only (CloudFront deferred)
-- Name tag extraction with "unnamed" fallback
-- Sort by name for better UX
-
-**Concerns Addressed:**
-- New AWS accounts: Empty arrays, not errors
-- Missing permissions: Log warning, continue with other resources
-- Large result sets: Document pagination (handled by boto3)
-- Cross-region: Document limitation (same-region only)
+### Error Response Format
+All error responses follow consistent structure:
+```json
+{
+  "success": false,
+  "error": "Error category",
+  "details": "Specific error message"
+}
+```
