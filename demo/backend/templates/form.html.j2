@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ customer }} / {{ env }} - Spec Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <!-- Breadcrumb Navigation -->
+        <nav class="mb-6 text-sm">
+            <a href="/" class="text-blue-600 hover:underline">Home</a>
+            <span class="text-gray-400 mx-2">/</span>
+            <span class="text-gray-700 font-medium">{{ customer }}</span>
+            <span class="text-gray-400 mx-2">/</span>
+            <span class="text-gray-700 font-medium">{{ env }}</span>
+        </nav>
+
+        <!-- Header with Environment Badge -->
+        <header class="mb-8">
+            <div class="flex items-center justify-between mb-4">
+                <h1 class="text-3xl font-bold text-gray-900 capitalize">
+                    {{ customer }}
+                </h1>
+                {% if env == 'dev' %}
+                <span class="px-4 py-2 bg-green-100 text-green-800 text-lg font-medium rounded-full">
+                    {{ env }}
+                </span>
+                {% elif env == 'stg' %}
+                <span class="px-4 py-2 bg-yellow-100 text-yellow-800 text-lg font-medium rounded-full">
+                    {{ env }}
+                </span>
+                {% elif env == 'prd' %}
+                <span class="px-4 py-2 bg-red-100 text-red-800 text-lg font-medium rounded-full">
+                    {{ env }}
+                </span>
+                {% else %}
+                <span class="px-4 py-2 bg-gray-100 text-gray-800 text-lg font-medium rounded-full">
+                    {{ env }}
+                </span>
+                {% endif %}
+            </div>
+
+            <!-- Read-only Notice -->
+            <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+                <p class="text-blue-700">
+                    <strong>Read-only mode:</strong> This is Phase D4B - viewing only.
+                    Phase D5 will enable editing and deployment.
+                </p>
+            </div>
+        </header>
+
+        <!-- Pod Configuration Form (Read-only) -->
+        <main>
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">
+                    Pod Configuration
+                </h2>
+
+                <form class="space-y-6">
+                    <!-- Computed Instance Name (Display only) -->
+                    <div class="bg-gray-50 p-4 rounded border border-gray-200">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Full Instance Name
+                        </label>
+                        <p class="text-lg font-mono text-gray-900">
+                            {{ customer }}-{{ env }}-{{ spec.spec.compute.instance_name }}
+                        </p>
+                        <p class="text-xs text-gray-500 mt-1">
+                            Format: {customer}-{environment}-{instance_name}
+                        </p>
+                    </div>
+
+                    <!-- Compute Section -->
+                    <div class="border-t pt-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">Compute</h3>
+
+                        <div class="space-y-4">
+                            <div>
+                                <label for="instance_name" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Instance Name
+                                </label>
+                                <input type="text"
+                                       id="instance_name"
+                                       value="{{ spec.spec.compute.instance_name }}"
+                                       disabled
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700">
+                            </div>
+
+                            <div>
+                                <label for="instance_type" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Instance Type
+                                </label>
+                                <input type="text"
+                                       id="instance_type"
+                                       value="{{ spec.spec.compute.instance_type }}"
+                                       disabled
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Security Section -->
+                    <div class="border-t pt-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">Security</h3>
+
+                        <div class="flex items-center">
+                            <input type="checkbox"
+                                   id="waf_enabled"
+                                   {% if spec.spec.security.waf.enabled %}checked{% endif %}
+                                   disabled
+                                   class="h-5 w-5 text-blue-600 border-gray-300 rounded">
+                            <label for="waf_enabled" class="ml-3 text-sm font-medium text-gray-700">
+                                Web Application Firewall (WAF) Enabled
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="border-t pt-6 flex justify-between">
+                        <a href="/"
+                           class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                            ← Back to Pods
+                        </a>
+
+                        <button type="button"
+                                disabled
+                                class="px-6 py-2 bg-gray-300 text-gray-500 rounded-lg cursor-not-allowed">
+                            Save Changes (Disabled in D4B)
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </main>
+
+        <footer class="mt-12 pt-8 border-t border-gray-200 text-center text-sm text-gray-500">
+            <p>
+                Spec Editor -
+                <a href="https://github.com/trakrf/action-spec"
+                   class="text-blue-600 hover:underline">
+                    trakrf/action-spec
+                </a>
+            </p>
+            <p class="mt-2">
+                Demo Phase D4B - Pod Detail View (Read-only)
+            </p>
+        </footer>
+    </div>
+</body>
+</html>

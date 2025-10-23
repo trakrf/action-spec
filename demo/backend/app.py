@@ -11,6 +11,7 @@ import os
 import sys
 import time
 import logging
+import re
 
 # Configure logging
 logging.basicConfig(
@@ -75,6 +76,66 @@ def set_cached(key, content):
     """Store value in cache with current timestamp"""
     _cache[key] = (content, time.time())
     logger.debug(f"Cached: {key}")
+
+def validate_path_component(value, param_name):
+    """
+    Validate URL path components to prevent path traversal and injection.
+
+    Args:
+        value: The path component to validate (customer or env)
+        param_name: Name for error messages ("customer" or "environment")
+
+    Returns:
+        str: The validated value
+
+    Raises:
+        ValueError: If validation fails
+    """
+    if not value or len(value) > 50:
+        raise ValueError(f"{param_name} must be 1-50 characters")
+
+    # Alphanumeric, hyphen, underscore only
+    if not re.match(r'^[a-zA-Z0-9_-]+$', value):
+        raise ValueError(f"{param_name} contains invalid characters (use a-z, A-Z, 0-9, -, _ only)")
+
+    # Prevent path traversal
+    if '..' in value or '/' in value or '\\' in value:
+        logger.warning(f"Path traversal attempt detected: {param_name}={value}")
+        raise ValueError(f"{param_name} contains path traversal attempt")
+
+    return value
+
+def fetch_spec(customer, env):
+    """
+    Fetch and parse spec.yml from GitHub for a specific pod.
+
+    Args:
+        customer: Customer name (validated)
+        env: Environment name (validated)
+
+    Returns:
+        dict: Parsed spec.yml content
+
+    Raises:
+        Exception: If spec not found or YAML parse fails
+    """
+    path = f"{SPECS_PATH}/{customer}/{env}/spec.yml"
+
+    try:
+        logger.info(f"Fetching spec: {path}")
+        content = repo.get_contents(path)
+        spec_yaml = content.decoded_content.decode('utf-8')
+        spec = yaml.safe_load(spec_yaml)
+        logger.info(f"✓ Successfully parsed spec for {customer}/{env}")
+        return spec
+
+    except yaml.YAMLError as e:
+        logger.error(f"YAML parse error in {path}: {e}")
+        raise ValueError(f"Invalid YAML in spec.yml: {e}")
+
+    except Exception as e:
+        logger.error(f"Failed to fetch spec {path}: {e}")
+        raise
 
 def list_all_pods():
     """
@@ -149,6 +210,43 @@ def index():
         logger.error(f"Error rendering home page: {e}")
         abort(500)
 
+@app.route('/pod/<customer>/<env>')
+def view_pod(customer, env):
+    """Pod detail page: show spec.yml configuration in read-only form"""
+    try:
+        # Validate input parameters
+        customer = validate_path_component(customer, "customer")
+        env = validate_path_component(env, "environment")
+
+        # Fetch and parse spec
+        spec = fetch_spec(customer, env)
+
+        # Render form with spec data
+        return render_template('form.html.j2',
+                               customer=customer,
+                               env=env,
+                               spec=spec)
+
+    except ValueError as e:
+        # Validation error - show error page with details
+        logger.warning(f"Validation error for /pod/{customer}/{env}: {e}")
+        return render_template('error.html.j2',
+                               error_type="validation",
+                               error_title="Invalid Request",
+                               error_message=str(e),
+                               show_pods=True,
+                               pods=list_all_pods()), 400
+
+    except Exception as e:
+        # Spec not found or other error
+        logger.error(f"Error viewing pod {customer}/{env}: {e}")
+        return render_template('error.html.j2',
+                               error_type="not_found",
+                               error_title="Pod Not Found",
+                               error_message=f"Could not find spec for {customer}/{env}",
+                               show_pods=True,
+                               pods=list_all_pods()), 404
+
 @app.route('/health')
 def health():
     """Health check: validate GitHub connectivity and show rate limit"""
@@ -187,6 +285,51 @@ def health():
             "status": "unhealthy",
             "error": str(e)
         }), 503
+
+@app.errorhandler(404)
+def not_found_error(error):
+    """Handle 404 errors globally"""
+    return render_template('error.html.j2',
+                           error_type="not_found",
+                           error_title="Page Not Found",
+                           error_message="The page you're looking for doesn't exist",
+                           show_pods=True,
+                           pods=list_all_pods()), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 errors globally"""
+    logger.error(f"Internal server error: {error}")
+    return render_template('error.html.j2',
+                           error_type="server_error",
+                           error_title="Internal Server Error",
+                           error_message="Something went wrong. Please try again later.",
+                           show_pods=False,
+                           pods=[]), 500
+
+@app.errorhandler(503)
+def service_unavailable_error(error):
+    """Handle 503 errors (GitHub API issues)"""
+    return render_template('error.html.j2',
+                           error_type="service_unavailable",
+                           error_title="Service Unavailable",
+                           error_message="GitHub API is temporarily unavailable. Please try again later.",
+                           show_pods=False,
+                           pods=[]), 503
+
+@app.context_processor
+def utility_processor():
+    """Add utility functions to all templates"""
+    def env_badge_color(env):
+        """Return Tailwind color classes for environment badges"""
+        colors = {
+            'dev': 'green',
+            'stg': 'yellow',
+            'prd': 'red'
+        }
+        return colors.get(env, 'gray')
+
+    return dict(env_badge_color=env_badge_color)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
