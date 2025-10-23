@@ -1,52 +1,98 @@
-# Phase 3.3.2: Spec Applier & PR Creation
+# Phase 3.3.2: GitHub Client Write Operations & Code Reorganization
 
 ## Origin
-This specification implements the second sub-phase of Phase 3.3 (GitHub Integration & AWS Discovery) from PRD.md. This is the **core write operation** that enables ActionSpec to create pull requests with infrastructure changes and change warnings.
+This specification is Part 1 of the Spec Applier & PR Creation feature (split from original 3.3.2). This phase establishes the **foundation** for GitHub write operations and reorganizes shared modules for cross-Lambda consumption.
 
 ## Outcome
-ActionSpec can create GitHub pull requests with updated spec files, formatted descriptions, and **destructive change warnings** from the change detection engine (Phase 3.2b). This completes the spec submission workflow and enables the React frontend (Phase 3.4).
+GitHub client can create branches, commit files, and create pull requests. Spec parsing modules are reorganized into shared/ directory for consumption by multiple Lambda functions.
 
 **What will change:**
-- Complete `spec-applier` Lambda implementation (replaces stub from Phase 3.1)
-- Extended `github_client.py` with branch creation and PR operations
-- **Integration with `change_detector.py`** from Phase 3.2b
-- PR description template with change summary and warnings
-- Labels and reviewers automatically added to PRs
-- Comprehensive error handling for GitHub API failures
+- Move `parser.py`, `change_detector.py`, `exceptions.py` to `shared/spec_parser/`
+- Update `spec-parser` handler imports
+- Extend `github_client.py` with 4 new functions (branch, commit, PR, labels)
+- Add 5 new exception types
+- Add `ALLOWED_REPOS` to SAM template
+- Comprehensive unit tests for write operations
 
 ## User Story
-As a **user submitting infrastructure changes via ActionSpec**
-I want **automated PR creation with clear change summaries and warnings**
-So that **I can review destructive changes before they're applied**
+As a **developer implementing PR automation**
+I want **reusable GitHub write operations and shared spec parsing modules**
+So that **multiple Lambdas can create PRs and validate specs**
 
 ## Context
 
-**Discovery**: Phase 3.3.1 provides read-only GitHub access. Phase 3.2b provides change detection. Now we combine them to create PRs that warn users about destructive changes (WAF disabling, compute downsizing, etc.).
+**Discovery**: Phase 3.3.1 provides read-only GitHub access. Phase 3.2a/3.2b provide spec parsing and change detection. Now we need to:
+1. Make parsing modules accessible to multiple Lambdas (can't import across function directories)
+2. Add GitHub write operations to create PRs
 
 **Current State**:
-- spec-applier Lambda is a stub returning hardcoded JSON
-- github_client.py only reads from GitHub (no write operations)
-- change_detector.py exists but isn't used by any Lambda
+- `parser.py`, `change_detector.py`, `exceptions.py` in `functions/spec-parser/` (not accessible to spec-applier)
+- `github_client.py` only reads from GitHub (no write operations)
+- SAM template missing `ALLOWED_REPOS` environment variable
 - No PR creation capability
 
 **Desired State**:
-- spec-applier Lambda accepts updated spec YAML
-- Creates feature branch: `action-spec-update-{timestamp}`
-- Commits spec changes to branch
-- **Runs change detection** (old spec vs new spec)
-- Creates PR with formatted description including warnings
-- Adds labels: `infrastructure-change`, `automated`
-- Returns PR URL to caller
+- Shared modules in `shared/spec_parser/` (accessible via Lambda layer)
+- GitHub client can create branches, commit files, create PRs, add labels
+- All existing spec-parser tests still pass
+- New tests cover write operations
+- SAM template includes `ALLOWED_REPOS`
 
 **Why This Matters**:
-- **User Safety**: Warns before destructive changes (WAF disable, data loss)
-- **Auditability**: All changes tracked in Git history
-- **Review Process**: PRs enable team review before apply
-- **Integration Point**: Connects validation (3.2), detection (3.2b), and GitHub (3.3.1)
+- **Code Reuse**: spec-applier needs parser and change_detector (can't import from another function)
+- **Foundation**: GitHub write ops are prerequisite for Phase 3.3.3
+- **Security**: Repository whitelist (ALLOWED_REPOS) prevents unauthorized access
 
 ## Technical Requirements
 
-### 1. Extend GitHub Client Module (`backend/lambda/shared/github_client.py`)
+### 1. Code Reorganization (CRITICAL FIRST STEP)
+
+**Move spec-parser modules to shared/**:
+```bash
+mkdir -p backend/lambda/shared/spec_parser/
+mv backend/lambda/functions/spec-parser/parser.py backend/lambda/shared/spec_parser/
+mv backend/lambda/functions/spec-parser/change_detector.py backend/lambda/shared/spec_parser/
+mv backend/lambda/functions/spec-parser/exceptions.py backend/lambda/shared/spec_parser/
+touch backend/lambda/shared/spec_parser/__init__.py
+```
+
+**Updated Directory Structure**:
+```
+backend/lambda/
+├── shared/                          # Shared via Lambda Layer
+│   ├── github_client.py
+│   ├── security_wrapper.py
+│   └── spec_parser/                 # NEW: Shared spec parsing logic
+│       ├── __init__.py              # NEW
+│       ├── parser.py                # MOVED from functions/spec-parser/
+│       ├── change_detector.py       # MOVED from functions/spec-parser/
+│       └── exceptions.py            # MOVED from functions/spec-parser/
+├── functions/
+│   ├── spec-parser/
+│   │   ├── handler.py               # UPDATE: imports from spec_parser package
+│   │   ├── requirements.txt
+│   │   └── schema/
+│   └── spec-applier/
+│       └── handler.py               # Future: will import from spec_parser
+```
+
+**Update spec-parser handler imports** (`backend/lambda/functions/spec-parser/handler.py`):
+```python
+# OLD (before reorganization):
+from parser import parse_spec
+from exceptions import ParseError, ValidationError, SecurityError
+
+# NEW (after reorganization):
+from spec_parser.parser import parse_spec
+from spec_parser.exceptions import ParseError, ValidationError, SecurityError
+```
+
+**Why This Must Be First**:
+- spec-applier (Phase 3.3.3) will need these modules
+- Lambda functions can't import from each other's directories
+- Must verify tests still pass before building on top
+
+### 2. Extend GitHub Client Module (`backend/lambda/shared/github_client.py`)
 
 Add these functions to existing module from Phase 3.3.1:
 
@@ -67,12 +113,41 @@ def create_branch(repo_name: str, branch_name: str, base_ref: str = 'main') -> s
         BranchExistsError: If branch name already exists
         RepositoryNotFoundError: If base_ref doesn't exist
 
-    Implementation Notes:
-    - Get SHA of base_ref (e.g., main branch HEAD)
-    - Create git reference: refs/heads/{branch_name}
-    - Uses PyGithub repo.get_git_ref() and repo.create_git_ref()
+    Implementation:
+        1. Validate repo_name format and whitelist
+        2. Get authenticated GitHub client
+        3. Get repository object
+        4. Get SHA of base_ref (e.g., main branch HEAD)
+        5. Create git reference: refs/heads/{branch_name}
+        6. Return SHA
+
+    Example:
+        sha = create_branch("trakrf/action-spec", "feature-123", "main")
     """
-    pass
+    _validate_repository_whitelist(repo_name)
+    client = get_github_client()
+
+    try:
+        repo = client.get_repo(repo_name)
+    except UnknownObjectException:
+        raise RepositoryNotFoundError(repo_name)
+
+    # Get base branch SHA
+    try:
+        base_ref_obj = repo.get_git_ref(f"heads/{base_ref}")
+        base_sha = base_ref_obj.object.sha
+    except UnknownObjectException:
+        raise RepositoryNotFoundError(repo_name, f"Base branch '{base_ref}' not found")
+
+    # Create new branch
+    try:
+        new_ref = repo.create_git_ref(f"refs/heads/{branch_name}", base_sha)
+        return new_ref.object.sha
+    except GithubException as e:
+        if "Reference already exists" in str(e):
+            raise BranchExistsError(f"Branch '{branch_name}' already exists in {repo_name}")
+        raise GitHubError(f"Failed to create branch: {e}")
+
 
 def commit_file_change(
     repo_name: str,
@@ -94,12 +169,50 @@ def commit_file_change(
     Returns:
         str: SHA of the new commit
 
-    Implementation Notes:
-    - Get current file SHA (required for update)
-    - Uses PyGithub repo.update_file()
-    - Handles both new files and updates
+    Implementation:
+        1. Validate repo and get client
+        2. Get file's current SHA (required for update)
+        3. Update file content with commit message
+        4. Return commit SHA
+
+    Example:
+        sha = commit_file_change(
+            "trakrf/action-spec",
+            "feature-123",
+            "specs/example.yml",
+            "apiVersion: v1...",
+            "Update WAF settings"
+        )
     """
-    pass
+    _validate_repository_whitelist(repo_name)
+    client = get_github_client()
+
+    try:
+        repo = client.get_repo(repo_name)
+    except UnknownObjectException:
+        raise RepositoryNotFoundError(repo_name)
+
+    # Get current file to get SHA (required for update)
+    try:
+        file = repo.get_contents(file_path, ref=branch_name)
+        result = repo.update_file(
+            path=file_path,
+            message=commit_message,
+            content=new_content,
+            sha=file.sha,
+            branch=branch_name
+        )
+        return result['commit'].sha
+    except UnknownObjectException:
+        # File doesn't exist, create it
+        result = repo.create_file(
+            path=file_path,
+            message=commit_message,
+            content=new_content,
+            branch=branch_name
+        )
+        return result['commit'].sha
+
 
 def create_pull_request(
     repo_name: str,
@@ -128,11 +241,49 @@ def create_pull_request(
         BranchNotFoundError: If head_branch doesn't exist
         PullRequestExistsError: If PR already exists for this branch
 
-    Implementation Notes:
-    - Uses PyGithub repo.create_pull()
-    - Returns immediately (doesn't wait for CI/CD)
+    Implementation:
+        1. Validate repo and get client
+        2. Create PR using PyGithub
+        3. Extract number and URLs
+        4. Return dict
+
+    Example:
+        pr = create_pull_request(
+            "trakrf/action-spec",
+            "Update WAF settings",
+            "## Changes\n- Enabled WAF",
+            "feature-123"
+        )
+        # pr = {"number": 10, "url": "https://...", "api_url": "https://api..."}
     """
-    pass
+    _validate_repository_whitelist(repo_name)
+    client = get_github_client()
+
+    try:
+        repo = client.get_repo(repo_name)
+    except UnknownObjectException:
+        raise RepositoryNotFoundError(repo_name)
+
+    # Create PR
+    try:
+        pr = repo.create_pull(
+            title=title,
+            body=body,
+            head=head_branch,
+            base=base_branch
+        )
+        return {
+            'number': pr.number,
+            'url': pr.html_url,
+            'api_url': pr.url
+        }
+    except GithubException as e:
+        if "A pull request already exists" in str(e):
+            raise PullRequestExistsError(f"PR already exists for branch '{head_branch}'")
+        if "404" in str(e) or "not found" in str(e).lower():
+            raise BranchNotFoundError(f"Branch '{head_branch}' not found in {repo_name}")
+        raise GitHubError(f"Failed to create PR: {e}")
+
 
 def add_pr_labels(repo_name: str, pr_number: int, labels: list[str]) -> None:
     """
@@ -145,521 +296,371 @@ def add_pr_labels(repo_name: str, pr_number: int, labels: list[str]) -> None:
 
     Raises:
         PullRequestNotFoundError: If PR doesn't exist
-        LabelNotFoundError: If label doesn't exist in repository
 
-    Implementation Notes:
-    - Labels must exist in repository first
-    - Creates labels if they don't exist (with default color)
-    - Uses PyGithub issue.add_to_labels()
+    Implementation:
+        1. Validate repo and get client
+        2. Get PR as issue (labels work on issues)
+        3. For each label, create if doesn't exist
+        4. Add all labels to PR
+
+    Example:
+        add_pr_labels("trakrf/action-spec", 10, ["automated", "infrastructure-change"])
     """
-    pass
+    _validate_repository_whitelist(repo_name)
+    client = get_github_client()
+
+    try:
+        repo = client.get_repo(repo_name)
+    except UnknownObjectException:
+        raise RepositoryNotFoundError(repo_name)
+
+    # Get PR as issue (labels are issue attributes)
+    try:
+        issue = repo.get_issue(pr_number)
+    except UnknownObjectException:
+        raise PullRequestNotFoundError(f"PR #{pr_number} not found in {repo_name}")
+
+    # Create labels if they don't exist
+    existing_labels = {label.name for label in repo.get_labels()}
+    for label_name in labels:
+        if label_name not in existing_labels:
+            # Create with default gray color
+            repo.create_label(label_name, "e4e669")
+
+    # Add labels to PR
+    issue.add_to_labels(*labels)
 ```
 
-**New Exception Types:**
+**New Exception Types** (add to github_client.py):
 ```python
 class BranchExistsError(GitHubError):
     """Branch already exists in repository"""
     pass
 
+
 class PullRequestExistsError(GitHubError):
     """Pull request already exists for this branch"""
     pass
+
 
 class BranchNotFoundError(GitHubError):
     """Branch doesn't exist in repository"""
     pass
 
+
 class PullRequestNotFoundError(GitHubError):
     """Pull request doesn't exist"""
     pass
+
 
 class LabelNotFoundError(GitHubError):
     """Label doesn't exist in repository"""
     pass
 ```
 
-### 2. Spec Applier Lambda Implementation (`backend/lambda/functions/spec-applier/handler.py`)
+### 3. SAM Template Updates (`template.yaml`)
 
-Replace stub with full implementation:
+**Add ALLOWED_REPOS to Globals**:
+```yaml
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        SPECS_BUCKET: !Ref SpecsBucket
+        GITHUB_TOKEN_SSM_PARAM: !Ref GithubTokenParamName
+        ALLOWED_REPOS: !Ref AllowedRepos  # NEW: Add this line
+    Layers:
+      - !Ref SharedDependenciesLayer
+```
+
+**Add AllowedRepos parameter**:
+```yaml
+Parameters:
+  # ... existing parameters ...
+
+  AllowedRepos:  # NEW: Add this parameter
+    Type: String
+    Default: "trakrf/action-spec"
+    Description: Comma-separated list of allowed repositories (e.g., "owner/repo1,owner/repo2")
+```
+
+### 4. Testing Requirements
+
+**Unit Tests** (`backend/tests/test_github_client_write_ops.py`):
 
 ```python
-from shared.github_client import (
+"""Tests for GitHub client write operations (Phase 3.3.2)"""
+import pytest
+from unittest.mock import Mock, patch, MagicMock
+from backend.lambda.shared.github_client import (
     create_branch,
     commit_file_change,
     create_pull_request,
-    add_pr_labels
+    add_pr_labels,
+    BranchExistsError,
+    BranchNotFoundError,
+    PullRequestExistsError,
+    PullRequestNotFoundError,
 )
-from spec_parser.change_detector import check_destructive_changes, Severity
-from spec_parser.parser import parse_spec
-from shared.security_wrapper import secure_handler
-import os
-import json
-import time
 
-@secure_handler
-def handler(event, context):
-    """
-    POST /spec/apply
 
-    Request Body:
-    {
-      "repo": "trakrf/action-spec",
-      "spec_path": "specs/examples/secure-web-waf.spec.yml",
-      "new_spec_yaml": "apiVersion: actionspec/v1\n...",
-      "commit_message": "Enable WAF protection"
-    }
-
-    Response:
-    {
-      "success": true,
-      "pr_url": "https://github.com/trakrf/action-spec/pull/123",
-      "pr_number": 123,
-      "branch_name": "action-spec-update-1234567890",
-      "warnings": [
-        {
-          "severity": "WARNING",
-          "message": "⚠️ WARNING: Disabling WAF will remove security protection",
-          "field_path": "spec.security.waf.enabled"
-        }
-      ]
-    }
-    """
-
-    # 1. Parse request body
-    body = json.loads(event['body'])
-    repo_name = body['repo']
-    spec_path = body['spec_path']
-    new_spec_yaml = body['new_spec_yaml']
-    commit_message = body.get('commit_message', 'Update ActionSpec configuration')
-
-    # 2. Validate new spec
-    new_spec = parse_spec(new_spec_yaml)
-
-    # 3. Fetch old spec from GitHub
-    old_spec_yaml = fetch_spec_file(repo_name, spec_path)
-    old_spec = parse_spec(old_spec_yaml)
-
-    # 4. Run change detection (KEY INTEGRATION!)
-    warnings = check_destructive_changes(old_spec, new_spec)
-
-    # 5. Create feature branch
-    timestamp = int(time.time())
-    branch_name = f"action-spec-update-{timestamp}"
-    create_branch(repo_name, branch_name, base_ref='main')
-
-    # 6. Commit changes
-    commit_sha = commit_file_change(
-        repo_name,
-        branch_name,
-        spec_path,
-        new_spec_yaml,
-        commit_message
-    )
-
-    # 7. Generate PR description
-    pr_body = generate_pr_description(old_spec, new_spec, warnings)
-    pr_title = f"ActionSpec Update: {commit_message}"
-
-    # 8. Create pull request
-    pr_info = create_pull_request(
-        repo_name,
-        pr_title,
-        pr_body,
-        head_branch=branch_name,
-        base_branch='main'
-    )
-
-    # 9. Add labels
-    add_pr_labels(repo_name, pr_info['number'], ['infrastructure-change', 'automated'])
-
-    # 10. Return response
-    return {
-        'statusCode': 200,
-        'body': json.dumps({
-            'success': True,
-            'pr_url': pr_info['url'],
-            'pr_number': pr_info['number'],
-            'branch_name': branch_name,
-            'warnings': [w.to_dict() for w in warnings]
-        })
-    }
-```
-
-### 3. PR Description Generator
-
-```python
-def generate_pr_description(old_spec: dict, new_spec: dict, warnings: list) -> str:
-    """
-    Generate formatted PR description with change summary and warnings.
-
-    Returns Markdown-formatted description following template:
-
-    ## ActionSpec Update
-
-    ### Changes
-    - **WAF Protection**: `false` → `true`
-    - **Compute Size**: `small` → `medium`
-
-    ### Warnings
-    ⚠️ WARNING: Disabling WAF will remove security protection (spec.security.waf.enabled)
-    🔴 CRITICAL: Changing database engine requires data migration (spec.data.engine)
-
-    ### Review Checklist
-    - [ ] Reviewed all warnings above
-    - [ ] Confirmed changes are intentional
-    - [ ] Tested in staging environment (if applicable)
-
-    ---
-    🤖 Automated by [ActionSpec](https://github.com/trakrf/action-spec)
-    """
-
-    # Extract changed fields
-    changes = _detect_field_changes(old_spec, new_spec)
-
-    # Build changes section
-    changes_md = "\n".join([
-        f"- **{change['field']}**: `{change['old']}` → `{change['new']}`"
-        for change in changes
-    ])
-
-    # Build warnings section
-    warnings_md = "\n".join([
-        f"{_severity_emoji(w.severity)} {w.severity}: {w.message} ({w.field_path})"
-        for w in warnings
-    ])
-
-    # Combine into template
-    template = f"""## ActionSpec Update
-
-### Changes
-{changes_md or "No field changes detected"}
-
-### Warnings
-{warnings_md or "No warnings - changes appear safe ✅"}
-
-### Review Checklist
-- [ ] Reviewed all warnings above
-- [ ] Confirmed changes are intentional
-- [ ] Tested in staging environment (if applicable)
-
----
-🤖 Automated by [ActionSpec](https://github.com/trakrf/action-spec)
-"""
-
-    return template
-
-def _severity_emoji(severity: str) -> str:
-    """Map severity to emoji indicator"""
-    return {
-        'INFO': 'ℹ️',
-        'WARNING': '⚠️',
-        'CRITICAL': '🔴'
-    }.get(severity, '•')
-
-def _detect_field_changes(old_spec: dict, new_spec: dict) -> list[dict]:
-    """
-    Detect changed fields between old and new spec.
-
-    Returns list of dicts with keys:
-        - field: Human-readable field name (e.g., "WAF Protection")
-        - old: Old value
-        - new: New value
-        - path: JSON path (e.g., "spec.security.waf.enabled")
-    """
-    changes = []
-
-    # Check common fields
-    if old_spec.get('spec', {}).get('security', {}).get('waf', {}).get('enabled') != \
-       new_spec.get('spec', {}).get('security', {}).get('waf', {}).get('enabled'):
-        changes.append({
-            'field': 'WAF Protection',
-            'old': old_spec.get('spec', {}).get('security', {}).get('waf', {}).get('enabled'),
-            'new': new_spec.get('spec', {}).get('security', {}).get('waf', {}).get('enabled'),
-            'path': 'spec.security.waf.enabled'
-        })
-
-    # Add more field comparisons...
-
-    return changes
-```
-
-### 4. API Gateway Integration
-
-Update SAM template to wire spec-applier:
-
-```yaml
-SpecApplierFunction:
-  Type: AWS::Serverless::Function
-  Properties:
-    Handler: handler.handler
-    Events:
-      ApplySpec:
-        Type: Api
-        Properties:
-          RestApiId: !Ref ActionSpecApi
-          Path: /spec/apply
-          Method: POST
-    Environment:
-      Variables:
-        GITHUB_TOKEN_SSM_PARAM: !Ref GithubTokenParam
-        ALLOWED_REPOS: !Ref AllowedRepos
-```
-
-### 5. Testing Requirements
-
-**Unit Tests (pytest):**
-
-```python
-# test_spec_applier.py
-
-def test_handler_creates_pr_successfully(mock_github, mock_ssm):
-    """Test complete PR creation flow end-to-end"""
-    pass
-
-def test_handler_includes_warnings_in_pr(mock_change_detector):
-    """Test warnings from change_detector appear in PR description"""
-    pass
-
-def test_handler_validates_new_spec(mock_parser):
-    """Test invalid spec rejected before PR creation"""
-    pass
-
-def test_handler_handles_branch_exists_error(mock_github):
-    """Test graceful handling when branch already exists (retry with new timestamp)"""
-    pass
-
-def test_handler_handles_github_api_failure(mock_github):
-    """Test error handling for GitHub API failures"""
-    pass
-
-# test_github_client_write_ops.py
-
-def test_create_branch_success(mock_github):
+@patch('backend.lambda.shared.github_client.get_github_client')
+def test_create_branch_success(mock_get_client):
     """Test branch creation with valid base_ref"""
-    pass
+    # Setup mock
+    mock_repo = Mock()
+    mock_base_ref = Mock()
+    mock_base_ref.object.sha = "abc123"
+    mock_repo.get_git_ref.return_value = mock_base_ref
 
-def test_create_branch_already_exists(mock_github):
+    mock_new_ref = Mock()
+    mock_new_ref.object.sha = "def456"
+    mock_repo.create_git_ref.return_value = mock_new_ref
+
+    mock_client = Mock()
+    mock_client.get_repo.return_value = mock_repo
+    mock_get_client.return_value = mock_client
+
+    # Test
+    sha = create_branch("trakrf/action-spec", "feature-test", "main")
+
+    # Verify
+    assert sha == "def456"
+    mock_repo.get_git_ref.assert_called_once_with("heads/main")
+    mock_repo.create_git_ref.assert_called_once_with("refs/heads/feature-test", "abc123")
+
+
+@patch('backend.lambda.shared.github_client.get_github_client')
+def test_create_branch_already_exists(mock_get_client):
     """Test BranchExistsError when branch exists"""
-    pass
+    from github import GithubException
 
-def test_commit_file_change_success(mock_github):
-    """Test file commit to existing branch"""
-    pass
+    mock_repo = Mock()
+    mock_repo.create_git_ref.side_effect = GithubException(
+        422, {"message": "Reference already exists"}, {}
+    )
 
-def test_create_pull_request_success(mock_github):
+    mock_client = Mock()
+    mock_client.get_repo.return_value = mock_repo
+    mock_get_client.return_value = mock_client
+
+    with pytest.raises(BranchExistsError):
+        create_branch("trakrf/action-spec", "feature-exists", "main")
+
+
+@patch('backend.lambda.shared.github_client.get_github_client')
+def test_commit_file_change_update(mock_get_client):
+    """Test file update (file exists)"""
+    mock_file = Mock()
+    mock_file.sha = "file123"
+
+    mock_commit = Mock()
+    mock_commit.sha = "commit456"
+
+    mock_repo = Mock()
+    mock_repo.get_contents.return_value = mock_file
+    mock_repo.update_file.return_value = {'commit': mock_commit}
+
+    mock_client = Mock()
+    mock_client.get_repo.return_value = mock_repo
+    mock_get_client.return_value = mock_client
+
+    sha = commit_file_change(
+        "trakrf/action-spec",
+        "feature-test",
+        "spec.yml",
+        "content",
+        "Update spec"
+    )
+
+    assert sha == "commit456"
+    mock_repo.update_file.assert_called_once()
+
+
+@patch('backend.lambda.shared.github_client.get_github_client')
+def test_commit_file_change_create(mock_get_client):
+    """Test file creation (file doesn't exist)"""
+    from github import UnknownObjectException
+
+    mock_commit = Mock()
+    mock_commit.sha = "commit789"
+
+    mock_repo = Mock()
+    mock_repo.get_contents.side_effect = UnknownObjectException(404, {}, {})
+    mock_repo.create_file.return_value = {'commit': mock_commit}
+
+    mock_client = Mock()
+    mock_client.get_repo.return_value = mock_repo
+    mock_get_client.return_value = mock_client
+
+    sha = commit_file_change(
+        "trakrf/action-spec",
+        "feature-test",
+        "new-spec.yml",
+        "content",
+        "Create spec"
+    )
+
+    assert sha == "commit789"
+    mock_repo.create_file.assert_called_once()
+
+
+@patch('backend.lambda.shared.github_client.get_github_client')
+def test_create_pull_request_success(mock_get_client):
     """Test PR creation returns URL and number"""
-    pass
+    mock_pr = Mock()
+    mock_pr.number = 42
+    mock_pr.html_url = "https://github.com/trakrf/action-spec/pull/42"
+    mock_pr.url = "https://api.github.com/repos/trakrf/action-spec/pulls/42"
 
-def test_create_pull_request_already_exists(mock_github):
+    mock_repo = Mock()
+    mock_repo.create_pull.return_value = mock_pr
+
+    mock_client = Mock()
+    mock_client.get_repo.return_value = mock_repo
+    mock_get_client.return_value = mock_client
+
+    result = create_pull_request(
+        "trakrf/action-spec",
+        "Test PR",
+        "Test body",
+        "feature-test"
+    )
+
+    assert result['number'] == 42
+    assert "pull/42" in result['url']
+    assert "api.github.com" in result['api_url']
+
+
+@patch('backend.lambda.shared.github_client.get_github_client')
+def test_create_pull_request_already_exists(mock_get_client):
     """Test PullRequestExistsError for duplicate PR"""
-    pass
+    from github import GithubException
 
-def test_add_pr_labels_success(mock_github):
+    mock_repo = Mock()
+    mock_repo.create_pull.side_effect = GithubException(
+        422, {"message": "A pull request already exists"}, {}
+    )
+
+    mock_client = Mock()
+    mock_client.get_repo.return_value = mock_repo
+    mock_get_client.return_value = mock_client
+
+    with pytest.raises(PullRequestExistsError):
+        create_pull_request("trakrf/action-spec", "Test", "Body", "feature-dup")
+
+
+@patch('backend.lambda.shared.github_client.get_github_client')
+def test_add_pr_labels_success(mock_get_client):
     """Test labels added to PR"""
-    pass
+    mock_label1 = Mock()
+    mock_label1.name = "automated"
 
-def test_add_pr_labels_creates_missing_labels(mock_github):
+    mock_issue = Mock()
+
+    mock_repo = Mock()
+    mock_repo.get_issue.return_value = mock_issue
+    mock_repo.get_labels.return_value = [mock_label1]
+
+    mock_client = Mock()
+    mock_client.get_repo.return_value = mock_repo
+    mock_get_client.return_value = mock_client
+
+    add_pr_labels("trakrf/action-spec", 42, ["automated", "infrastructure-change"])
+
+    mock_issue.add_to_labels.assert_called_once_with("automated", "infrastructure-change")
+
+
+@patch('backend.lambda.shared.github_client.get_github_client')
+def test_add_pr_labels_creates_missing(mock_get_client):
     """Test labels created if they don't exist"""
-    pass
+    mock_issue = Mock()
 
-# test_pr_description_generator.py
+    mock_repo = Mock()
+    mock_repo.get_issue.return_value = mock_issue
+    mock_repo.get_labels.return_value = []  # No existing labels
 
-def test_generate_pr_description_with_warnings():
-    """Test PR description includes warnings from change_detector"""
-    warnings = [
-        ChangeWarning(Severity.WARNING, "WAF disabled", "spec.security.waf.enabled"),
-        ChangeWarning(Severity.CRITICAL, "Engine changed", "spec.data.engine")
-    ]
-    description = generate_pr_description(old_spec, new_spec, warnings)
+    mock_client = Mock()
+    mock_client.get_repo.return_value = mock_repo
+    mock_get_client.return_value = mock_client
 
-    assert "⚠️ WARNING: WAF disabled" in description
-    assert "🔴 CRITICAL: Engine changed" in description
-    pass
+    add_pr_labels("trakrf/action-spec", 42, ["new-label"])
 
-def test_generate_pr_description_no_warnings():
-    """Test PR description when no warnings (safe changes)"""
-    pass
-
-def test_detect_field_changes_waf_toggle():
-    """Test field change detection for WAF enable/disable"""
-    pass
+    # Verify label was created
+    mock_repo.create_label.assert_called_once_with("new-label", "e4e669")
+    mock_issue.add_to_labels.assert_called_once()
 ```
-
-**Integration Tests (Manual):**
-- [ ] Create real PR in test repository
-- [ ] Verify PR description formatting in GitHub UI
-- [ ] Verify warnings appear correctly
-- [ ] Verify labels applied
-- [ ] Test with multiple simultaneous requests (branch name uniqueness)
-
-### 6. Change Detector Integration (CRITICAL!)
-
-**Import and Use:**
-```python
-from spec_parser.change_detector import check_destructive_changes, Severity, ChangeWarning
-
-# In handler function:
-warnings = check_destructive_changes(old_spec, new_spec)
-
-# warnings is List[ChangeWarning] with attributes:
-# - severity: Severity enum (INFO, WARNING, CRITICAL)
-# - message: str (user-facing warning)
-# - field_path: str (e.g., "spec.security.waf.enabled")
-
-# Convert to dict for JSON response:
-warnings_json = [
-    {
-        'severity': w.severity.value,
-        'message': w.message,
-        'field_path': w.field_path
-    }
-    for w in warnings
-]
-```
-
-**Why This Integration Matters:**
-- Phase 3.2b built change detection but it wasn't used
-- This Lambda is the **first consumer** of change_detector.py
-- Proves change detection works end-to-end
-- Provides user value (safety warnings)
 
 ## Validation Criteria
 
+### Prerequisites (Before Implementation):
+- [ ] Read Phase 3.3.1 github_client.py to understand existing patterns
+- [ ] Read Phase 3.2a/3.2b test patterns for mocking strategy
+
 ### Immediate (Measured at PR Merge):
-- [ ] spec-applier Lambda creates real PR in action-spec repo
-- [ ] PR description includes change summary
-- [ ] **PR description includes warnings from change_detector** (key validation!)
-- [ ] PR has labels: `infrastructure-change`, `automated`
-- [ ] Branch name includes timestamp (uniqueness)
-- [ ] Lambda returns PR URL in response
-- [ ] Unit tests cover all error scenarios (10+ tests)
-- [ ] Test coverage > 85% for spec-applier handler
-- [ ] Integration with change_detector.py verified (warning test passes)
-
-### Integration Tests (Manual Validation):
-- [ ] Create PR that disables WAF → Warning appears in description
-- [ ] Create PR that downsizes compute → Warning appears in description
-- [ ] Create PR with safe changes → "No warnings" message appears
-- [ ] Multiple simultaneous requests → Unique branch names generated
-
-### Post-Merge (Phase 3.4 Validation):
-- [ ] React frontend can submit spec → PR created successfully
-- [ ] Frontend displays warnings from Lambda response
-- [ ] Users can click PR URL to review changes
+- [ ] **Code reorganization complete** - parser.py, change_detector.py, exceptions.py moved to shared/spec_parser/
+- [ ] **spec-parser handler updated** - imports from spec_parser package
+- [ ] **All existing spec-parser tests still pass** - verify reorganization didn't break anything
+- [ ] **4 GitHub write functions implemented** - create_branch, commit_file_change, create_pull_request, add_pr_labels
+- [ ] **5 new exception types added** - BranchExistsError, PullRequestExistsError, etc.
+- [ ] **ALLOWED_REPOS in SAM template** - parameter and environment variable
+- [ ] **8 unit tests pass** - test_github_client_write_ops.py
+- [ ] **Test coverage > 85%** - for new github_client functions
+- [ ] **Black formatting clean** - cd backend && black --check lambda/
+- [ ] **Mypy types clean** - cd backend && mypy lambda/ --ignore-missing-imports
 
 ## Success Metrics
 
 **Technical:**
-- < 5s end-to-end latency (fetch old spec → create PR)
-- 100% test pass rate
-- Zero PR creation failures in first week
-- Warnings appear in 100% of PRs with destructive changes
+- All existing tests still pass after reorganization
+- New GitHub write operations covered by unit tests
+- No breaking changes to spec-parser functionality
 
-**User Experience:**
-- Users understand warnings without documentation
-- PR descriptions provide sufficient context for review
-- Clear next steps (review checklist)
+**Foundation:**
+- Phase 3.3.3 can import from spec_parser package
+- Phase 3.3.3 can use GitHub write operations
 
 ## Dependencies
-- **Requires**: Phase 3.3.1 (github_client.py foundation)
-- **Requires**: Phase 3.2b (change_detector.py)
-- **Requires**: Phase 3.2a (parser.py for spec validation)
-- **Blocks**: Phase 3.4 (frontend needs this endpoint)
+- **Requires**: Phase 3.3.1 (github_client.py foundation, PyGithub installed)
+- **Requires**: Phase 3.2a (parser.py exists)
+- **Requires**: Phase 3.2b (change_detector.py exists)
+- **Blocks**: Phase 3.3.3 (spec-applier needs these functions)
 
 ## Edge Cases to Handle
 
 1. **Branch Already Exists**:
-   - Scenario: User submits twice quickly
-   - Detection: BranchExistsError from create_branch()
-   - Response: Retry with new timestamp (add random suffix if needed)
+   - Detection: GithubException with "Reference already exists"
+   - Response: Raise BranchExistsError
 
-2. **PR Already Exists for Branch**:
-   - Scenario: Manual PR created for same branch
-   - Detection: PullRequestExistsError
-   - Response: Return existing PR URL (don't fail)
+2. **File Doesn't Exist (commit_file_change)**:
+   - Detection: UnknownObjectException when getting file
+   - Response: Create file instead of update
 
-3. **Invalid New Spec**:
-   - Scenario: User submits malformed YAML
-   - Detection: ValidationError from parse_spec()
-   - Response: Return 400 with validation errors (don't create PR)
+3. **PR Already Exists**:
+   - Detection: GithubException with "pull request already exists"
+   - Response: Raise PullRequestExistsError
 
-4. **Old Spec Not Found**:
-   - Scenario: Spec file moved or renamed
-   - Detection: FileNotFoundError from fetch_spec_file()
-   - Response: Return 404 with helpful message
-
-5. **GitHub API Failure Mid-Operation**:
-   - Scenario: Branch created but commit fails
-   - Detection: Any GitHub exception after branch creation
-   - Response: Log branch name, return error, leave branch (user can delete manually)
-
-6. **Rate Limit During PR Creation**:
-   - Scenario: Multiple PRs created simultaneously
-   - Detection: RateLimitError
-   - Response: Retry with exponential backoff (inherited from 3.3.1)
+4. **Label Doesn't Exist**:
+   - Detection: Check repo.get_labels()
+   - Response: Create label with default color
 
 ## Implementation Notes
 
-### Why Timestamp in Branch Name?
-- Uniqueness: Prevents collisions for simultaneous submissions
-- Traceability: Easy to identify when change was submitted
-- Sorting: Branches sort chronologically
-- No UUID: Timestamps more human-readable
+### Why Code Reorganization First?
+- Lambda functions can't import from each other's directories
+- Must be in shared/ to be accessible via Lambda layer
+- Verify tests pass before building dependent code
 
-### Why Include Warnings in Response?
-- Frontend UX: Can display warnings immediately
-- Redundancy: Users see warnings in response AND in PR
-- Validation: Confirms change detection ran
+### Why Add ALLOWED_REPOS Now?
+- github_client.py already uses it (logs warning if missing)
+- Phase 3.3.1 should have had it (fixing technical debt)
+- Required for production security
 
-### Why Labels?
-- Filtering: Easy to find ActionSpec PRs
-- Automation: Can trigger CI/CD based on labels
-- Documentation: Self-documenting PR source
-
-### Why Review Checklist?
-- User Guidance: Clear next steps
-- Safety: Encourages thoughtful review
-- Best Practice: Aligns with GitHub workflow
-
-## Future Enhancements (Post-Phase 3.3.2)
-
-Not in scope for this phase but documented for future work:
-
-1. **PR Reviewers Auto-Assignment**
-   - Benefit: Ensures PRs get reviewed
-   - Implementation: Add to create_pull_request()
-   - Effort: 1-2 hours
-
-2. **CI/CD Status Checks**
-   - Benefit: Block merge until validation passes
-   - Implementation: GitHub Actions workflow
-   - Effort: 3-4 hours
-
-3. **Rollback Detection**
-   - Benefit: Identify spec reverts (going back to old version)
-   - Implementation: Compare new spec to older commits
-   - Effort: 4-6 hours
-
-4. **Slack Notifications**
-   - Benefit: Alert team when PR created
-   - Implementation: SNS → Lambda → Slack webhook
-   - Effort: 2-3 hours
-
-## Conversation References
-
-**Key Insights:**
-- "Phase 3.3.2 is the core feature of Phase 3.3" - Why this is the most important sub-phase
-- "Integration with change_detector.py from Phase 3.2b" - First consumer of change detection
-- "PR includes change warnings from detector" - Key success criterion
-
-**Decisions Made:**
-- Timestamp-based branch names (uniqueness + human-readable)
-- Warnings in both response and PR description (redundancy for UX)
-- Labels automatically applied (filtering + automation)
-- Review checklist in PR template (user guidance)
-
-**Concerns Addressed:**
-- Branch name collisions: Timestamp + optional random suffix
-- API failures mid-operation: Graceful degradation (leave branch)
-- Invalid specs: Validate before creating PR
-- User safety: Warnings prominently displayed
+### Testing Strategy
+- Mock PyGithub objects (repo, issue, pr)
+- Test success paths and error paths
+- Verify exception types raised correctly
