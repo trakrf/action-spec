@@ -28,6 +28,8 @@ on:
         required: false
         type: boolean
         default: false
+  push:  # TEMPORARY: For testing on feature branch (remove before merge)
+    branches: [feature/active-demo-phase-d3]
 
 jobs:
   deploy:
@@ -36,8 +38,13 @@ jobs:
       contents: write      # Required for committing spec.yml
 
     env:
-      POD_PATH: demo/infra/${{ inputs.customer }}/${{ inputs.environment }}
-      SPEC_FILE: demo/infra/${{ inputs.customer }}/${{ inputs.environment }}/spec.yml
+      # TEMPORARY: Default values for push trigger testing (remove before merge)
+      CUSTOMER: ${{ inputs.customer || 'advworks' }}
+      ENVIRONMENT: ${{ inputs.environment || 'dev' }}
+      INSTANCE_NAME: ${{ inputs.instance_name || 'web1' }}
+      WAF_ENABLED: ${{ inputs.waf_enabled || 'false' }}
+      POD_PATH: demo/infra/${{ inputs.customer || 'advworks' }}/${{ inputs.environment || 'dev' }}
+      SPEC_FILE: demo/infra/${{ inputs.customer || 'advworks' }}/${{ inputs.environment || 'dev' }}/spec.yml
 
     steps:
       - name: Checkout code
@@ -61,8 +68,8 @@ jobs:
           import os
 
           spec_file = os.environ['SPEC_FILE']
-          instance_name = '${{ inputs.instance_name }}'
-          waf_enabled = '${{ inputs.waf_enabled }}'
+          instance_name = os.environ['INSTANCE_NAME']
+          waf_enabled = os.environ['WAF_ENABLED']
 
           # Convert string boolean to Python boolean
           waf_enabled_bool = waf_enabled.lower() == 'true'
@@ -119,7 +126,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "✅ No changes to spec.yml, skipping commit"
           else
-            git commit -m "deploy: Update ${{ inputs.customer }}/${{ inputs.environment }} - instance=${{ inputs.instance_name }}, waf=${{ inputs.waf_enabled }}"
+            git commit -m "deploy: Update ${{ env.CUSTOMER }}/${{ env.ENVIRONMENT }} - instance=${{ env.INSTANCE_NAME }}, waf=${{ env.WAF_ENABLED }}"
             git push
             echo "✅ Committed and pushed spec.yml changes"
           fi
@@ -154,10 +161,10 @@ jobs:
         run: |
           echo "### Deployment Complete! :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Customer:** ${{ inputs.customer }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Instance Name:** ${{ inputs.instance_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**WAF Enabled:** ${{ inputs.waf_enabled }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Customer:** ${{ env.CUSTOMER }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ env.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Instance Name:** ${{ env.INSTANCE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**WAF Enabled:** ${{ env.WAF_ENABLED }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Show OpenTofu outputs if available
