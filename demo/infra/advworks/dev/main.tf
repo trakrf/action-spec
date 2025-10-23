@@ -11,7 +11,6 @@ module "pod" {
   environment   = local.spec.metadata.environment
   instance_name = local.spec.spec.compute.instance_name
   instance_type = local.spec.spec.compute.instance_type
-  demo_message  = local.spec.spec.compute.demo_message
   waf_enabled   = local.spec.spec.security.waf.enabled
   aws_region    = var.aws_region
   ssh_key_name  = var.ssh_key_name

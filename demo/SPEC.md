@@ -353,7 +353,6 @@ spec:
   compute:
     instance_name: web1
     instance_type: t4g.nano
-    demo_message: "Hello from AdventureWorks Development"
   security:
     waf:
       enabled: false
@@ -373,7 +372,6 @@ module "pod" {
   environment   = local.spec.metadata.environment
   instance_name = local.spec.spec.compute.instance_name
   instance_type = local.spec.spec.compute.instance_type
-  demo_message  = local.spec.spec.compute.demo_message
   waf_enabled   = local.spec.spec.security.waf.enabled
 }
 
@@ -394,13 +392,12 @@ resource "aws_instance" "pod" {
     curl -fsSL https://get.docker.com -o get-docker.sh
     sh get-docker.sh
 
-    # Run http-echo on boot
+    # Run http-echo on boot (uses mendhak/http-https-echo to show request details)
     docker run -d \
       --name demo-app \
       --restart unless-stopped \
-      -p 80:5678 \
-      hashicorp/http-echo:latest \
-      -text="${var.demo_message}"
+      -p 80:8080 \
+      mendhak/http-https-echo:latest
     EOF
 
   tags = {
@@ -611,7 +608,6 @@ cd demo/infra/advworks/stg
 # Edit spec.yml
 vim spec.yml
 # Change: environment: dev → stg
-# Change: demo_message to something different
 # Maybe enable WAF for variety
 
 # Test each pod

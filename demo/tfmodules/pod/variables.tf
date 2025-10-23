@@ -29,12 +29,6 @@ variable "instance_type" {
   default     = "t4g.nano"
 }
 
-variable "demo_message" {
-  description = "Message displayed by http-echo service"
-  type        = string
-  default     = "Hello from ActionSpec Demo"
-}
-
 variable "waf_enabled" {
   description = "Enable WAF protection (Phase D2)"
   type        = bool
