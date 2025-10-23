@@ -26,6 +26,9 @@ resource "aws_instance" "pod" {
     curl -fsSL https://get.docker.com -o get-docker.sh
     sh get-docker.sh
 
+    # Add ubuntu user to docker group (no sudo required for docker commands)
+    usermod -aG docker ubuntu
+
     # Run http-echo on port 80
     docker run -d \
       --name demo-app \
