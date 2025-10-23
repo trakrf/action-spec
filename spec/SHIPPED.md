@@ -483,3 +483,66 @@ warnings = check_destructive_changes(old_spec, new_spec)
 **Next Phase**: Phase 3.3 will integrate this module into Spec Applier Lambda to include warnings in PR descriptions when users submit infrastructure changes.
 
 ---
+
+## Demo Phase D1 - Foundation Infrastructure & Terraform Module
+- **Date**: 2025-01-23
+- **Branch**: feature/demo-phase-d1
+- **Commit**: c1093e2
+- **PR**: https://github.com/trakrf/action-spec/pull/15
+- **Summary**: Reusable Terraform module pattern with YAML-driven configuration for EC2 deployment
+- **Key Changes**:
+  - Created reusable pod module in `demo/tfmodules/pod/` (6 files: main, variables, data, ec2, security_groups, outputs)
+  - Implemented advworks/dev pod with customer-specific naming (`advworks-dev-web1`)
+  - Docker + http-echo user_data for immediate HTTP testability
+  - VPC/subnet configurability (supports accounts with/without default VPC)
+  - SSH key injection and docker group configuration (no sudo required)
+  - Pre-commit hook enhanced with AWS AMI publisher account whitelist (6 official accounts)
+  - Region adaptation: us-east-2 (Ohio) due to VPC availability, documented migration path to us-west-2
+- **Validation**: ✅ All checks passed (tofu fmt, tofu validate, tofu plan, instance deployed and tested)
+
+### Success Metrics
+- ✅ spec.yml file created with correct schema - **Result**: ✅ Created and validated with YAML parser
+- ✅ Module structure exists in demo/tfmodules/pod/ - **Result**: ✅ 6 module files created (main, variables, data, ec2, security_groups, outputs)
+- ✅ Implementation calls module from demo/infra/advworks/dev/ - **Result**: ✅ yamldecode pattern working correctly
+- ✅ Terraform init/plan/apply succeeds - **Result**: ✅ All operations successful (S3 backend, DynamoDB locking)
+- ✅ EC2 instance created with name: "advworks-dev-web1" - **Result**: ✅ Correct naming convention applied
+- ✅ Instance has public IP assigned - **Result**: ✅ Public IP assigned and accessible
+- ✅ Instance tagged with Customer, Environment, ManagedBy - **Result**: ✅ All required tags present + Project tag from provider
+- ✅ Security group allows HTTP (80) and SSH (22) - **Result**: ✅ Both ports accessible from anywhere (demo only)
+- ✅ Terraform outputs demo_url with clickable HTTP link - **Result**: ✅ Output format: http://{ip}/
+- ✅ Instance accessible via HTTP after ~2 minutes - **Result**: ✅ HTTP endpoint responding within expected timeframe
+- ✅ http-echo returns expected demo_message - **Result**: ✅ Returns "Hello from AdventureWorks Development"
+- ✅ Pattern is reusable (ready for Phase D7 scaling) - **Result**: ✅ Module structure proven, ready to copy for 8 more pods
+
+**Overall Success**: 12/12 metrics achieved (100%)
+
+### Technical Notes
+- **Instance Type**: t4g.nano (ARM64, ~$3/month per instance)
+- **Region**: us-east-2 (Ohio) - chosen due to VPC availability in AWS account
+- **Tech Debt**: Documented migration path to us-west-2 (Oregon) in demo/SPEC.md "Out of Scope" section
+- **State Storage**: S3 backend (`jxp-demo-terraform-backend-store`) with DynamoDB locking (`terraform-lock`)
+- **Docker**: Ubuntu user added to docker group in user_data (no sudo required)
+- **SSH Access**: Both AWS key pair (msee2) and injected key (mike@kwyk.net) configured
+- **User Data Fixes**: Fixed heredoc indentation (shebang must be at column 0), added Docker service readiness checks
+- **Commits**: 9 total commits addressing module creation, VPC configurability, region adaptation, SSH setup, and Docker fixes
+- **Instance Status**: Deployed, tested, and destroyed (pattern proven, will recreate for Phase D2)
+
+### Files Created
+**Module** (`demo/tfmodules/pod/`):
+- main.tf - Terraform version requirements and module metadata
+- variables.tf - 8 input variables with validation rules
+- data.tf - Ubuntu 22.04 ARM64 AMI lookup, VPC/subnet data sources
+- ec2.tf - EC2 instance resource with user_data script
+- security_groups.tf - Security group allowing HTTP (80) and SSH (22)
+- outputs.tf - 5 outputs (instance_id, public_ip, instance_name, demo_url, security_group_id)
+
+**Implementation** (`demo/infra/advworks/dev/`):
+- spec.yml - YAML configuration for advworks/dev pod
+- main.tf - Module invocation with yamldecode pattern
+- backend.tf - S3 backend configuration
+- providers.tf - AWS provider with default_tags
+- variables.tf - aws_region and ssh_key_name variables
+
+**Next Phase**: D2 - Add ALB + conditional WAF to module
+
+---
