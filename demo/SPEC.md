@@ -702,4 +702,22 @@ D7 (Integration)
 
 ---
 
+## Out of Scope / Technical Debt
+
+**Phase D1 Implementation Note**:
+- ✅ **Completed**: Phase D1 infrastructure pattern proven with us-east-2 region
+- ⚠️ **Tech Debt**: Originally planned for us-west-2 (Oregon), but that region has no VPCs in this AWS account
+- 📋 **Future**: Migrate from us-east-2 (Ohio) to us-west-2 (Oregon) once VPC infrastructure is established
+  - Update default region in `demo/tfmodules/pod/variables.tf`
+  - Update default region in `demo/infra/advworks/dev/variables.tf`
+  - Re-run terraform plan/apply in target region
+  - Destroy old resources in us-east-2
+
+**Rationale for Deferral**:
+- Oregon (us-west-2) is geographically preferred for West Coast deployments
+- However, proving the pattern and shipping Phase D1 took priority over VPC setup
+- The module is region-agnostic, so migration is straightforward when ready
+
+---
+
 **Ready to build.**
