@@ -19,6 +19,9 @@ resource "aws_instance" "pod" {
     #!/bin/bash
     set -e
 
+    # Add additional SSH key to ubuntu user
+    echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIsrQEHKvwPZI8lOBF1j7t9pMUW28pRAZ914BjTnAwW7 mike@kwyk.net" >> /home/ubuntu/.ssh/authorized_keys
+
     # Install Docker via official script
     curl -fsSL https://get.docker.com -o get-docker.sh
     sh get-docker.sh
