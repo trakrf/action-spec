@@ -12,6 +12,7 @@ Globals:
         ENVIRONMENT: !Ref Environment
         SPECS_BUCKET: !Ref SpecsBucket
         GITHUB_TOKEN_SSM_PARAM: !Ref GithubTokenParamName
+        ALLOWED_REPOS: !Ref AllowedRepos
     Layers:
       - !Ref SharedDependenciesLayer
 
@@ -47,6 +48,11 @@ Parameters:
     Type: String
     Default: /actionspec/github-token
     Description: SSM Parameter name for GitHub PAT
+
+  AllowedRepos:
+    Type: String
+    Default: "trakrf/action-spec"
+    Description: Comma-separated list of allowed repositories (e.g., "owner/repo1,owner/repo2")
 
 Resources:
   # API Gateway

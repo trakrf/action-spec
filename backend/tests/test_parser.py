@@ -10,14 +10,19 @@ from pathlib import Path
 
 import pytest
 
-# Add parser module to path
+# Add shared modules to path
+sys.path.insert(
+    0,
+    os.path.join(os.path.dirname(__file__), "..", "lambda", "shared"),
+)
+# Add handler module to path (for lambda handler tests)
 sys.path.insert(
     0,
     os.path.join(os.path.dirname(__file__), "..", "lambda", "functions", "spec-parser"),
 )
 
-from exceptions import ParseError, SecurityError, ValidationError
-from parser import SpecParser, load_schema
+from spec_parser.exceptions import ParseError, SecurityError, ValidationError
+from spec_parser.parser import SpecParser, load_schema
 
 # Test fixtures directory
 FIXTURES_DIR = Path(__file__).parent / "fixtures"

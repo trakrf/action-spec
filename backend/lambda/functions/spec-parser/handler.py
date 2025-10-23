@@ -34,7 +34,7 @@ def lambda_handler(event, context):
             "metadata": { parsing stats }
         }
     """
-    from parser import SpecParser
+    from spec_parser.parser import SpecParser
 
     # Parse request body
     try:

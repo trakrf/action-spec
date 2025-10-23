@@ -12,7 +12,7 @@ import yaml
 from jsonschema import Draft7Validator
 from jsonschema import ValidationError as JsonSchemaValidationError
 
-from exceptions import ParseError, SecurityError
+from spec_parser.exceptions import ParseError, SecurityError
 
 # Maximum document size (1MB)
 MAX_DOC_SIZE = 1 * 1024 * 1024
