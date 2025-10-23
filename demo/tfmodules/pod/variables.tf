@@ -52,3 +52,15 @@ variable "security_group_id" {
   type        = string
   default     = null
 }
+
+variable "vpc_id" {
+  description = "VPC ID for resources (defaults to default VPC if available)"
+  type        = string
+  default     = null
+}
+
+variable "subnet_id" {
+  description = "Subnet ID for EC2 instance (required if no default VPC)"
+  type        = string
+  default     = null
+}
