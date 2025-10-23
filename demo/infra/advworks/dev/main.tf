@@ -14,6 +14,7 @@ module "pod" {
   demo_message  = local.spec.spec.compute.demo_message
   waf_enabled   = local.spec.spec.security.waf.enabled
   aws_region    = var.aws_region
+  ssh_key_name  = var.ssh_key_name
 }
 
 # Outputs for easy access
