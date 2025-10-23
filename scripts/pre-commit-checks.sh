@@ -32,8 +32,9 @@ for file in $STAGED_FILES; do
     continue
   fi
 
-  # Skip excluded directories
-  if [[ "$file" =~ ^(node_modules|\.git|dist|build|\.terraform)/.*$ ]]; then
+  # Skip excluded directories and security workflow files (contain whitelisted IDs in comments)
+  if [[ "$file" =~ ^(node_modules|\.git|dist|build|\.terraform)/.*$ ]] || \
+     [[ "$file" =~ ^\.github/workflows/security-scan\.yml$ ]]; then
     continue
   fi
 
@@ -83,8 +84,17 @@ for file in $FILTERED_FILES; do
     while IFS=: read -r line_num line_text; do
       if [[ "$line_text" =~ [0-9]{12} ]]; then
         matched=$(echo "$line_text" | grep -oE '[0-9]{12}' | head -1)
-        # Skip common fake/test account IDs (all same digit or standard examples)
-        if [[ ! "$matched" =~ ^(000000000000|111111111111|999999999999|123456789012)$ ]]; then
+        # Skip common fake/test account IDs and known public AWS account IDs
+        # Test/Example IDs:
+        # - 000000000000, 111111111111, 999999999999, 123456789012 = test/example accounts
+        # Official AMI Publishers:
+        # - 099720109477 = Canonical (Ubuntu AMIs)
+        # - 801119661308 = Microsoft (Windows Server AMIs)
+        # - 137112412989 = Amazon Linux AMIs
+        # - 591542846629 = AWS Marketplace
+        # - 679593333241 = AWS Deep Learning AMIs
+        # - 898082745236 = AWS ECS-Optimized AMIs
+        if [[ ! "$matched" =~ ^(000000000000|111111111111|999999999999|123456789012|099720109477|801119661308|137112412989|591542846629|679593333241|898082745236)$ ]]; then
           report_violation "$file" "$line_num" "AWS Account ID pattern detected" "$matched"
         fi
       fi
