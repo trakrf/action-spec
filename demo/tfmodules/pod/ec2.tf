@@ -5,6 +5,9 @@ resource "aws_instance" "pod" {
   # Use specified or default subnet
   subnet_id = local.subnet_id
 
+  # SSH key for debugging access
+  key_name = var.ssh_key_name
+
   # Assign public IP for demo access
   associate_public_ip_address = true
 

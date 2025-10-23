@@ -64,3 +64,9 @@ variable "subnet_id" {
   type        = string
   default     = null
 }
+
+variable "ssh_key_name" {
+  description = "SSH key pair name for EC2 instance access (optional but recommended)"
+  type        = string
+  default     = null
+}
