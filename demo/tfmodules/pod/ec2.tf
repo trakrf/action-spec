@@ -29,13 +29,18 @@ resource "aws_instance" "pod" {
     # Add ubuntu user to docker group (no sudo required for docker commands)
     usermod -aG docker ubuntu
 
+    # Wait for Docker service to be ready
+    systemctl enable docker
+    systemctl start docker
+    sleep 5
+
     # Run http-echo on port 80
     docker run -d \
       --name demo-app \
       --restart unless-stopped \
       -p 80:5678 \
       hashicorp/http-echo:latest \
-      -text="${var.demo_message}"
+      -text='${var.demo_message}'
 
     # Log completion
     echo "User data completed at $(date)" >> /var/log/user-data.log
