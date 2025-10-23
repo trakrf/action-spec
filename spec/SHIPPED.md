@@ -1,5 +1,39 @@
 # Shipped Features
 
+## Phase 3.3.3: Spec Applier Lambda & PR Description Generator
+- **Date**: 2025-10-23
+- **Branch**: feature/spec-applier-lambda
+- **Commit**: b650802
+- **PR**: https://github.com/trakrf/action-spec/pull/12
+- **Summary**: Complete spec-applier Lambda handler that creates GitHub PRs with formatted destructive change warnings
+- **Key Changes**:
+  - Replaced spec-applier stub with full implementation (291 lines)
+  - PR description generator with emoji severity indicators (ℹ️ INFO, ⚠️ WARNING, 🔴 CRITICAL)
+  - Integration with change detector (Phase 3.2b) for destructive change warnings
+  - Integration with GitHub client (Phase 3.3.2) for PR creation workflow
+  - Comprehensive error handling: validation errors, GitHub API failures, missing files, branch collisions
+  - Branch name collision retry logic with random suffix fallback
+  - Auto-labels PRs with 'infrastructure-change' and 'automated' tags
+  - Updated SAM template API endpoint: /api/submit → /spec/apply
+  - Created 12 comprehensive unit tests (8 handler + 4 PR generator) with 88% coverage
+  - Created parse_spec() wrapper function for SpecParser class integration
+- **Validation**: ✅ All checks passed (black, mypy, 12 tests, 88% coverage)
+
+### Success Metrics
+- ✅ Handler creates PRs with formatted descriptions - **Result**: Implemented with emoji severity indicators and review checklist
+- ✅ Warnings from change_detector appear correctly - **Result**: Tested with all severity levels (INFO, WARNING, CRITICAL)
+- ✅ All error scenarios handled gracefully - **Result**: 8 error handling tests cover validation, GitHub API, missing files, collisions
+- ✅ Test coverage >85% - **Result**: 88% achieved (11 of 89 statements uncovered)
+- ✅ Change detector integration working - **Result**: Calls check_destructive_changes(), formats ChangeWarning objects
+- ✅ GitHub client integration working - **Result**: Uses all 4 write operations (branch, commit, PR, labels)
+- ✅ API endpoint ready for Phase 3.4 frontend - **Result**: /spec/apply endpoint functional with documented API
+
+**Overall Success**: 100% of metrics achieved (7/7)
+
+**Enables**: Phase 3.3.4 (manual integration tests), Phase 3.4 (frontend spec form)
+
+---
+
 ## Phase 3.3.2: GitHub Client Write Operations & Code Reorganization
 - **Date**: 2025-10-23
 - **Branch**: feature/3.3.2
