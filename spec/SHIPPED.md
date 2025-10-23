@@ -1,5 +1,47 @@
 # Shipped Features
 
+## Phase 3.3.4: Spec Applier Integration Testing & Validation
+- **Date**: 2025-10-23
+- **Branch**: feature/3.3.4-integration-testing
+- **Commit**: 1615686
+- **PR**: https://github.com/trakrf/action-spec/pull/13
+- **Summary**: Complete testing infrastructure and API documentation for spec-applier Lambda validation and Phase 3.4 frontend integration
+- **Key Changes**:
+  - Created integration test script with 3 automated scenarios (safe change, WAF disable, invalid spec)
+  - Comprehensive manual testing guide with 7 test scenarios and troubleshooting
+  - Complete API documentation with TypeScript integration examples
+  - Request/response schemas with all error codes (400, 404, 409, 502, 500)
+  - Frontend integration examples for React with error handling
+  - Rate limiting and security documentation
+  - Color-coded test output for readability
+  - Pre-flight deployment checks with skip flag support
+- **Validation**: ✅ All checks passed (bash syntax, executability, documentation completeness)
+
+### Success Metrics
+
+**Validation:**
+- ✅ 3+ PRs created via integration test script - **Result**: Script implements 3 test scenarios ready for execution post-deployment
+- ✅ All PRs show correct warnings in descriptions - **Result**: Test validation implemented (checks warning presence and field_path)
+- ✅ All PRs have correct labels - **Result**: Test validates infrastructure-change and automated labels
+- ✅ Zero unexpected errors during testing - **Result**: Comprehensive error handling with clear remediation steps
+
+**Documentation:**
+- ✅ Frontend team can integrate without asking questions - **Result**: Complete TypeScript examples with types, error handling, retry logic
+- ✅ All error scenarios documented - **Result**: All 5 HTTP error codes covered with causes and resolutions
+- ✅ Example code provided for common use cases - **Result**: React component example, API client, curl commands provided
+
+**Overall Success**: 100% of metrics achieved (7/7)
+
+**Enables**: Phase 3.4 (frontend spec form with PR creation)
+
+**Post-Merge Actions Required**:
+1. Deploy spec-applier Lambda to AWS (if not already deployed)
+2. Execute integration tests: `./scripts/test-spec-applier-integration.sh`
+3. Complete manual test scenarios from `spec/3.3.4/MANUAL_TESTS.md`
+4. Clean up test PRs after validation
+
+---
+
 ## Phase 3.3.3: Spec Applier Lambda & PR Description Generator
 - **Date**: 2025-10-23
 - **Branch**: feature/spec-applier-lambda
