@@ -28,8 +28,6 @@ on:
         required: false
         type: boolean
         default: false
-  push:  # TEMPORARY: For testing on feature branch (remove before merge)
-    branches: [feature/active-demo-phase-d3]
 
 jobs:
   deploy:
@@ -38,13 +36,12 @@ jobs:
       contents: write      # Required for committing spec.yml
 
     env:
-      # TEMPORARY: Default values for push trigger testing (remove before merge)
-      CUSTOMER: ${{ inputs.customer || 'advworks' }}
-      ENVIRONMENT: ${{ inputs.environment || 'dev' }}
-      INSTANCE_NAME: ${{ inputs.instance_name || 'web1' }}
-      WAF_ENABLED: ${{ inputs.waf_enabled || 'false' }}
-      POD_PATH: demo/infra/${{ inputs.customer || 'advworks' }}/${{ inputs.environment || 'dev' }}
-      SPEC_FILE: demo/infra/${{ inputs.customer || 'advworks' }}/${{ inputs.environment || 'dev' }}/spec.yml
+      CUSTOMER: ${{ inputs.customer }}
+      ENVIRONMENT: ${{ inputs.environment }}
+      INSTANCE_NAME: ${{ inputs.instance_name }}
+      WAF_ENABLED: ${{ inputs.waf_enabled }}
+      POD_PATH: demo/infra/${{ inputs.customer }}/${{ inputs.environment }}
+      SPEC_FILE: demo/infra/${{ inputs.customer }}/${{ inputs.environment }}/spec.yml
 
     steps:
       - name: Checkout code
