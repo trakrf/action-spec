@@ -1,5 +1,54 @@
 # Shipped Features
 
+## Phase 3.3.5: AWS Discovery Lambda
+- **Date**: 2025-10-23
+- **Branch**: feature/3.3.5
+- **Commit**: 777a4e7
+- **PR**: https://github.com/trakrf/action-spec/pull/14
+- **Summary**: Complete AWS Discovery Lambda implementation replacing Phase 3.1 stub with full boto3-based resource discovery for VPCs, Subnets, ALBs, and WAF WebACLs
+- **Key Changes**:
+  - Implemented discover_vpcs() with name tag extraction and alphabetical sorting
+  - Implemented discover_subnets() with optional VPC ID filtering via query parameter
+  - Implemented discover_albs() filtering to Application Load Balancers only (excludes NLBs, GLBs)
+  - Implemented discover_waf_webacls() for REGIONAL scope with managed rule count detection
+  - Added graceful error handling: missing permissions return empty arrays (not exceptions)
+  - Created comprehensive test suite: 26 unit tests with 100% code coverage
+  - Documented IAM permissions in docs/IAM_POLICIES.md with troubleshooting guide
+  - Query parameter support: resource_type (vpc|subnet|alb|waf|all) and vpc_id filters
+  - ERROR level logging for permission failures without failing requests
+- **Validation**: ✅ All checks passed (black, mypy, 26/26 tests, 100% coverage)
+
+### Success Metrics
+
+**Immediate (Measured at PR Merge):**
+- ✅ discover_vpcs() returns list of VPCs with name, CIDR, ID - **Result**: Implemented with Tag extraction and sorting
+- ✅ discover_subnets() filters by VPC ID correctly - **Result**: Optional vpc_id query parameter implemented
+- ✅ discover_albs() only returns Application Load Balancers - **Result**: Type == 'application' filter implemented
+- ✅ discover_waf_webacls() returns REGIONAL scope WebACLs - **Result**: REGIONAL scope with managed rule counting
+- ✅ Missing permissions return empty arrays (no exceptions) - **Result**: Graceful degradation with ERROR logging
+- ✅ No resources return empty arrays (not errors) - **Result**: Tested with empty boto3 responses
+- ✅ Unit tests cover all error scenarios (8+ tests) - **Result**: 26 tests covering success, errors, edge cases
+- ✅ Test coverage > 85% for aws-discovery handler - **Result**: 100% code coverage achieved
+- ✅ IAM policy documented in docs/IAM_POLICIES.md - **Result**: Complete with troubleshooting and testing guide
+
+**Technical Metrics:**
+- ✅ 100% test pass rate - **Result**: 26/26 tests passing
+- ✅ Zero exceptions for missing permissions - **Result**: All discovery functions catch and log errors
+- ✅ Structured JSON response format - **Result**: Matches frontend expectations from spec
+
+**Overall Success**: 100% of metrics achieved (12/12)
+
+**Enables**: Phase 3.4 (React frontend with dropdown population from discovered resources)
+
+**Post-Merge Actions Required**:
+1. Deploy updated Lambda to AWS staging environment
+2. Verify IAM permissions in Lambda execution role match docs/IAM_POLICIES.md
+3. Test with real AWS account containing resources
+4. Test with empty AWS account (new account scenario)
+5. Verify CloudWatch logs show ERROR level messages for permission failures
+
+---
+
 ## Phase 3.3.4: Spec Applier Integration Testing & Validation
 - **Date**: 2025-10-23
 - **Branch**: feature/3.3.4-integration-testing
