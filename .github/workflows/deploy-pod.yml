@@ -1,0 +1,169 @@
+name: Deploy Pod
+
+on:
+  workflow_dispatch:
+    inputs:
+      customer:
+        description: 'Customer name'
+        required: true
+        type: choice
+        options:
+          - advworks
+          - northwind
+          - contoso
+      environment:
+        description: 'Environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - stg
+          - prd
+      instance_name:
+        description: 'Instance name (e.g., web1, app1)'
+        required: true
+        type: string
+      waf_enabled:
+        description: 'Enable WAF protection'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # Required for committing spec.yml
+
+    env:
+      POD_PATH: demo/infra/${{ inputs.customer }}/${{ inputs.environment }}
+      SPEC_FILE: demo/infra/${{ inputs.customer }}/${{ inputs.environment }}/spec.yml
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # Full history for clean commits
+
+      - name: Setup Python for YAML processing
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Update spec.yml
+        run: |
+          python3 << 'EOF'
+          import yaml
+          import sys
+          import os
+
+          spec_file = os.environ['SPEC_FILE']
+          instance_name = '${{ inputs.instance_name }}'
+          waf_enabled = '${{ inputs.waf_enabled }}'
+
+          # Convert string boolean to Python boolean
+          waf_enabled_bool = waf_enabled.lower() == 'true'
+
+          try:
+              # Read existing spec
+              with open(spec_file, 'r') as f:
+                  spec = yaml.safe_load(f)
+
+              # Validate structure
+              if not spec or 'spec' not in spec:
+                  print(f"❌ ERROR: Invalid spec.yml structure - missing 'spec' key")
+                  sys.exit(1)
+
+              if 'compute' not in spec['spec']:
+                  print(f"❌ ERROR: Invalid spec.yml structure - missing 'spec.compute' key")
+                  sys.exit(1)
+
+              if 'security' not in spec['spec'] or 'waf' not in spec['spec']['security']:
+                  print(f"❌ ERROR: Invalid spec.yml structure - missing 'spec.security.waf' key")
+                  sys.exit(1)
+
+              # Update fields from workflow inputs
+              spec['spec']['compute']['instance_name'] = instance_name
+              spec['spec']['security']['waf']['enabled'] = waf_enabled_bool
+
+              # Write updated spec
+              with open(spec_file, 'w') as f:
+                  yaml.dump(spec, f, default_flow_style=False, sort_keys=False)
+
+              print(f"✅ Updated spec.yml:")
+              print(f"   instance_name: {instance_name}")
+              print(f"   waf.enabled: {waf_enabled_bool}")
+
+          except FileNotFoundError:
+              print(f"❌ ERROR: spec.yml not found at {spec_file}")
+              print(f"   Valid combinations: advworks/dev, advworks/stg, advworks/prd, northwind/dev, northwind/prd, contoso/dev")
+              sys.exit(1)
+          except yaml.YAMLError as e:
+              print(f"❌ ERROR: Failed to parse YAML: {e}")
+              sys.exit(1)
+          except Exception as e:
+              print(f"❌ ERROR: Unexpected error updating spec.yml: {e}")
+              sys.exit(1)
+          EOF
+
+      - name: Commit spec.yml
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ${{ env.SPEC_FILE }}
+
+          # Only commit if there are changes
+          if git diff --staged --quiet; then
+            echo "✅ No changes to spec.yml, skipping commit"
+          else
+            git commit -m "deploy: Update ${{ inputs.customer }}/${{ inputs.environment }} - instance=${{ inputs.instance_name }}, waf=${{ inputs.waf_enabled }}"
+            git push
+            echo "✅ Committed and pushed spec.yml changes"
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-2' }}
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.0
+
+      - name: OpenTofu Init
+        working-directory: ${{ env.POD_PATH }}
+        run: tofu init
+
+      - name: OpenTofu Plan
+        working-directory: ${{ env.POD_PATH }}
+        run: tofu plan -out=tfplan
+
+      - name: OpenTofu Apply
+        working-directory: ${{ env.POD_PATH }}
+        run: tofu apply -auto-approve tfplan
+
+      - name: Output deployment info
+        if: success()
+        working-directory: ${{ env.POD_PATH }}
+        run: |
+          echo "### Deployment Complete! :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Customer:** ${{ inputs.customer }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Instance Name:** ${{ inputs.instance_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**WAF Enabled:** ${{ inputs.waf_enabled }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Show OpenTofu outputs if available
+          if tofu output -json > /tmp/tf_output.json 2>/dev/null; then
+            echo "**OpenTofu Outputs:**" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat /tmp/tf_output.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
