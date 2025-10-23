@@ -34,13 +34,12 @@ systemctl enable docker
 systemctl start docker
 sleep 5
 
-# Run http-echo on port 80
+# Run http-echo on port 80 (uses mendhak/http-https-echo to show request details)
 docker run -d \
   --name demo-app \
   --restart unless-stopped \
-  -p 80:5678 \
-  hashicorp/http-echo:latest \
-  -text='${var.demo_message}'
+  -p 80:8080 \
+  mendhak/http-https-echo:latest
 
 # Log completion
 echo "User data completed at $(date)" >> /var/log/user-data.log

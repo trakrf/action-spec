@@ -22,3 +22,33 @@ output "security_group_id" {
   description = "Security group ID used by the instance"
   value       = local.security_group_id
 }
+
+output "alb_dns_name" {
+  description = "DNS name of the load balancer"
+  value       = aws_lb.main.dns_name
+}
+
+output "alb_arn" {
+  description = "ARN of the load balancer"
+  value       = aws_lb.main.arn
+}
+
+output "alb_url" {
+  description = "HTTP URL to access via ALB (wait ~60s for health checks)"
+  value       = "http://${aws_lb.main.dns_name}/"
+}
+
+output "waf_enabled" {
+  description = "Whether WAF is enabled"
+  value       = var.waf_enabled
+}
+
+output "waf_web_acl_id" {
+  description = "ID of WAF Web ACL (empty if disabled)"
+  value       = var.waf_enabled ? aws_wafv2_web_acl.main[0].id : ""
+}
+
+output "waf_web_acl_arn" {
+  description = "ARN of WAF Web ACL (empty if disabled)"
+  value       = var.waf_enabled ? aws_wafv2_web_acl.main[0].arn : ""
+}

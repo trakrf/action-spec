@@ -24,6 +24,14 @@ resource "aws_security_group" "pod" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    description     = "HTTP from ALB"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
   egress {
     description = "Allow all outbound"
     from_port   = 0

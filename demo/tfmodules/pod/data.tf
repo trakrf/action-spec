@@ -35,6 +35,14 @@ data "aws_subnets" "default" {
   }
 }
 
+# All subnets for ALB (requires multi-AZ)
+data "aws_subnets" "all" {
+  filter {
+    name   = "vpc-id"
+    values = [local.vpc_id]
+  }
+}
+
 # Locals to handle conditional VPC/subnet selection
 locals {
   vpc_id    = var.vpc_id != null ? var.vpc_id : data.aws_vpc.default[0].id
