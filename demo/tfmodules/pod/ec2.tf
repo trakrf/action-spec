@@ -16,35 +16,35 @@ resource "aws_instance" "pod" {
 
   # User data: Install Docker and run http-echo
   user_data = <<-EOF
-    #!/bin/bash
-    set -e
+#!/bin/bash
+set -e
 
-    # Add additional SSH key to ubuntu user
-    echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIsrQEHKvwPZI8lOBF1j7t9pMUW28pRAZ914BjTnAwW7 mike@kwyk.net" >> /home/ubuntu/.ssh/authorized_keys
+# Add additional SSH key to ubuntu user
+echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIsrQEHKvwPZI8lOBF1j7t9pMUW28pRAZ914BjTnAwW7 mike@kwyk.net" >> /home/ubuntu/.ssh/authorized_keys
 
-    # Install Docker via official script
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sh get-docker.sh
+# Install Docker via official script
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
 
-    # Add ubuntu user to docker group (no sudo required for docker commands)
-    usermod -aG docker ubuntu
+# Add ubuntu user to docker group (no sudo required for docker commands)
+usermod -aG docker ubuntu
 
-    # Wait for Docker service to be ready
-    systemctl enable docker
-    systemctl start docker
-    sleep 5
+# Wait for Docker service to be ready
+systemctl enable docker
+systemctl start docker
+sleep 5
 
-    # Run http-echo on port 80
-    docker run -d \
-      --name demo-app \
-      --restart unless-stopped \
-      -p 80:5678 \
-      hashicorp/http-echo:latest \
-      -text='${var.demo_message}'
+# Run http-echo on port 80
+docker run -d \
+  --name demo-app \
+  --restart unless-stopped \
+  -p 80:5678 \
+  hashicorp/http-echo:latest \
+  -text='${var.demo_message}'
 
-    # Log completion
-    echo "User data completed at $(date)" >> /var/log/user-data.log
-  EOF
+# Log completion
+echo "User data completed at $(date)" >> /var/log/user-data.log
+EOF
 
   # Customer-specific naming convention
   tags = {
