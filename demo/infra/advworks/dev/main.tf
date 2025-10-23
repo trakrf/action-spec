@@ -32,3 +32,33 @@ output "instance_name" {
   description = "Full instance name"
   value       = module.pod.instance_name
 }
+
+output "alb_url" {
+  description = "Access the app via ALB at this URL (wait ~60s for health checks)"
+  value       = module.pod.alb_url
+}
+
+output "alb_dns_name" {
+  description = "ALB DNS name"
+  value       = module.pod.alb_dns_name
+}
+
+output "alb_arn" {
+  description = "ALB ARN"
+  value       = module.pod.alb_arn
+}
+
+output "waf_enabled" {
+  description = "Whether WAF is enabled"
+  value       = module.pod.waf_enabled
+}
+
+output "waf_web_acl_id" {
+  description = "WAF Web ACL ID (empty if disabled)"
+  value       = module.pod.waf_web_acl_id
+}
+
+output "waf_web_acl_arn" {
+  description = "WAF Web ACL ARN (empty if disabled)"
+  value       = module.pod.waf_web_acl_arn
+}
