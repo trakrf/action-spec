@@ -1,0 +1,104 @@
+# Flask Development Commands for Demo Backend
+
+# Default recipe - show available commands
+default:
+    @just --list
+
+# Start Flask development server
+dev:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd backend
+
+    # Load environment variables from root .env.local
+    if [ -f "../.env.local" ]; then
+        set -a
+        source ../.env.local
+        set +a
+        echo "✓ Loaded environment from .env.local"
+    else
+        echo "⚠️  Warning: .env.local not found in root directory"
+    fi
+
+    # Activate venv
+    if [ ! -d "venv" ]; then
+        echo "❌ Virtual environment not found. Run: just setup"
+        exit 1
+    fi
+
+    source venv/bin/activate
+    echo "✓ Virtual environment activated"
+    echo ""
+    echo "🚀 Starting Flask development server..."
+    echo "   Open http://localhost:5000 in your browser"
+    echo "   Press Ctrl+C to stop"
+    echo ""
+    flask --app app run --debug --host 0.0.0.0
+
+# Set up virtual environment and install dependencies
+setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd backend
+
+    echo "Creating virtual environment..."
+    python3 -m venv venv
+
+    echo "Installing dependencies..."
+    venv/bin/pip install -q -r requirements.txt
+
+    echo "✓ Setup complete!"
+    echo "  Run 'just dev' to start the Flask server"
+
+# Clean up virtual environment and cache
+clean:
+    #!/usr/bin/env bash
+    cd backend
+    rm -rf venv __pycache__ templates/__pycache__ .pytest_cache
+    echo "✓ Cleaned up venv and cache files"
+
+# Run health check (requires server to be running)
+health:
+    @curl -s http://localhost:5000/health | python3 -m json.tool
+
+# Test pod discovery (requires server to be running)
+test-home:
+    @curl -s http://localhost:5000/ | head -30
+
+# Run Flask with custom port
+dev-port PORT:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd backend
+
+    if [ -f "../.env.local" ]; then
+        set -a
+        source ../.env.local
+        set +a
+    fi
+
+    source venv/bin/activate
+    echo "🚀 Starting Flask on port {{PORT}}..."
+    flask --app app run --debug --host 0.0.0.0 --port {{PORT}}
+
+# Show Flask logs (if running in background)
+logs:
+    @tail -f /tmp/flask_run.log 2>/dev/null || echo "No Flask logs found at /tmp/flask_run.log"
+
+# Check if all environment variables are set
+check-env:
+    #!/usr/bin/env bash
+    if [ -f ".env.local" ]; then
+        source .env.local
+    fi
+
+    echo "Checking required environment variables..."
+
+    if [ -z "${GH_TOKEN:-}" ]; then
+        echo "❌ GH_TOKEN not set"
+    else
+        echo "✓ GH_TOKEN is set"
+    fi
+
+    echo "✓ GH_REPO=${GH_REPO:-trakrf/action-spec}"
+    echo "✓ SPECS_PATH=${SPECS_PATH:-demo/infra}"

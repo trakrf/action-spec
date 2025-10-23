@@ -7,7 +7,6 @@ spec:
   compute:
     instance_name: web1
     instance_type: t4g.nano
-    demo_message: Hello from AdventureWorks Development
   security:
     waf:
       enabled: false
