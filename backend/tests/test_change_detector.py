@@ -9,13 +9,13 @@ from pathlib import Path
 
 import pytest
 
-# Add change_detector module to path
+# Add shared modules to path
 sys.path.insert(
     0,
-    os.path.join(os.path.dirname(__file__), "..", "lambda", "functions", "spec-parser"),
+    os.path.join(os.path.dirname(__file__), "..", "lambda", "shared"),
 )
 
-from change_detector import (
+from spec_parser.change_detector import (
     check_destructive_changes,
     ChangeWarning,
     Severity,

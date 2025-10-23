@@ -77,6 +77,36 @@ class FileNotFoundError(GitHubError):
         super().__init__(f"File not found: {file_path} in {repo_name} (ref: {ref})")
 
 
+class BranchExistsError(GitHubError):
+    """Branch already exists in repository"""
+
+    pass
+
+
+class PullRequestExistsError(GitHubError):
+    """Pull request already exists for this branch"""
+
+    pass
+
+
+class BranchNotFoundError(GitHubError):
+    """Branch doesn't exist in repository"""
+
+    pass
+
+
+class PullRequestNotFoundError(GitHubError):
+    """Pull request doesn't exist"""
+
+    pass
+
+
+class LabelNotFoundError(GitHubError):
+    """Label doesn't exist in repository"""
+
+    pass
+
+
 @lru_cache(maxsize=1)
 def get_github_client() -> Github:
     """
@@ -277,3 +307,219 @@ def fetch_spec_file(repo_name: str, file_path: str, ref: str = "main") -> str:
 
     # Should never reach here
     raise GitHubError("Unexpected error in fetch_spec_file retry loop")
+
+
+def create_branch(repo_name: str, branch_name: str, base_ref: str = "main") -> str:
+    """
+    Create a new feature branch in repository.
+
+    Args:
+        repo_name: Repository in format "owner/repo"
+        branch_name: New branch name (e.g., "action-spec-update-1234567890")
+        base_ref: Base branch to fork from (default: 'main')
+
+    Returns:
+        str: SHA of the new branch HEAD
+
+    Raises:
+        BranchExistsError: If branch name already exists
+        RepositoryNotFoundError: If base_ref doesn't exist
+
+    Example:
+        sha = create_branch("trakrf/action-spec", "feature-123", "main")
+    """
+    _validate_repository_whitelist(repo_name)
+    client = get_github_client()
+
+    try:
+        repo = client.get_repo(repo_name)
+    except UnknownObjectException:
+        raise RepositoryNotFoundError(repo_name)
+
+    # Get base branch SHA
+    try:
+        base_ref_obj = repo.get_git_ref(f"heads/{base_ref}")
+        base_sha = base_ref_obj.object.sha
+    except UnknownObjectException:
+        raise RepositoryNotFoundError(repo_name)
+
+    # Create new branch
+    try:
+        new_ref = repo.create_git_ref(f"refs/heads/{branch_name}", base_sha)
+        logger.info(
+            f"Created branch {branch_name} in {repo_name} (SHA: {new_ref.object.sha})"
+        )
+        return new_ref.object.sha
+    except GithubException as e:
+        if "Reference already exists" in str(e):
+            raise BranchExistsError(
+                f"Branch '{branch_name}' already exists in {repo_name}"
+            )
+        raise GitHubError(f"Failed to create branch: {e}")
+
+
+def commit_file_change(
+    repo_name: str,
+    branch_name: str,
+    file_path: str,
+    new_content: str,
+    commit_message: str,
+) -> str:
+    """
+    Commit file change to existing branch.
+
+    Args:
+        repo_name: Repository in format "owner/repo"
+        branch_name: Branch to commit to
+        file_path: File path to update
+        new_content: New file content (UTF-8 string)
+        commit_message: Commit message
+
+    Returns:
+        str: SHA of the new commit
+
+    Example:
+        sha = commit_file_change(
+            "trakrf/action-spec",
+            "feature-123",
+            "specs/example.yml",
+            "apiVersion: v1...",
+            "Update WAF settings"
+        )
+    """
+    _validate_repository_whitelist(repo_name)
+    client = get_github_client()
+
+    try:
+        repo = client.get_repo(repo_name)
+    except UnknownObjectException:
+        raise RepositoryNotFoundError(repo_name)
+
+    # Get current file to get SHA (required for update)
+    try:
+        file_obj = repo.get_contents(file_path, ref=branch_name)
+        # file_obj is ContentFile (not a list) when fetching a single file
+        file_sha = file_obj.sha if not isinstance(file_obj, list) else file_obj[0].sha  # type: ignore[union-attr]
+        result = repo.update_file(
+            path=file_path,
+            message=commit_message,
+            content=new_content,
+            sha=file_sha,
+            branch=branch_name,
+        )
+        logger.info(f"Updated {file_path} in {repo_name} on {branch_name}")
+        return result["commit"].sha
+    except UnknownObjectException:
+        # File doesn't exist, create it
+        result = repo.create_file(
+            path=file_path,
+            message=commit_message,
+            content=new_content,
+            branch=branch_name,
+        )
+        logger.info(f"Created {file_path} in {repo_name} on {branch_name}")
+        return result["commit"].sha
+
+
+def create_pull_request(
+    repo_name: str,
+    title: str,
+    body: str,
+    head_branch: str,
+    base_branch: str = "main",
+) -> dict:
+    """
+    Create pull request from head branch to base branch.
+
+    Args:
+        repo_name: Repository in format "owner/repo"
+        title: PR title
+        body: PR description (supports Markdown)
+        head_branch: Source branch (your changes)
+        base_branch: Target branch (default: 'main')
+
+    Returns:
+        dict: PR details with keys:
+            - number: PR number
+            - url: HTML URL for PR
+            - api_url: API URL for PR
+
+    Raises:
+        BranchNotFoundError: If head_branch doesn't exist
+        PullRequestExistsError: If PR already exists for this branch
+
+    Example:
+        pr = create_pull_request(
+            "trakrf/action-spec",
+            "Update WAF settings",
+            "## Changes\n- Enabled WAF",
+            "feature-123"
+        )
+    """
+    _validate_repository_whitelist(repo_name)
+    client = get_github_client()
+
+    try:
+        repo = client.get_repo(repo_name)
+    except UnknownObjectException:
+        raise RepositoryNotFoundError(repo_name)
+
+    # Create PR
+    try:
+        pr = repo.create_pull(
+            title=title, body=body, head=head_branch, base=base_branch
+        )
+        logger.info(f"Created PR #{pr.number} in {repo_name}: {pr.html_url}")
+        return {"number": pr.number, "url": pr.html_url, "api_url": pr.url}
+    except GithubException as e:
+        if "A pull request already exists" in str(e):
+            raise PullRequestExistsError(
+                f"PR already exists for branch '{head_branch}'"
+            )
+        if "404" in str(e) or "not found" in str(e).lower():
+            raise BranchNotFoundError(
+                f"Branch '{head_branch}' not found in {repo_name}"
+            )
+        raise GitHubError(f"Failed to create PR: {e}")
+
+
+def add_pr_labels(repo_name: str, pr_number: int, labels: list[str]) -> None:
+    """
+    Add labels to existing pull request.
+
+    Args:
+        repo_name: Repository in format "owner/repo"
+        pr_number: PR number
+        labels: List of label names (e.g., ["infrastructure-change", "automated"])
+
+    Raises:
+        PullRequestNotFoundError: If PR doesn't exist
+
+    Example:
+        add_pr_labels("trakrf/action-spec", 10, ["automated", "infrastructure-change"])
+    """
+    _validate_repository_whitelist(repo_name)
+    client = get_github_client()
+
+    try:
+        repo = client.get_repo(repo_name)
+    except UnknownObjectException:
+        raise RepositoryNotFoundError(repo_name)
+
+    # Get PR as issue (labels are issue attributes)
+    try:
+        issue = repo.get_issue(pr_number)
+    except UnknownObjectException:
+        raise PullRequestNotFoundError(f"PR #{pr_number} not found in {repo_name}")
+
+    # Create labels if they don't exist
+    existing_labels = {label.name for label in repo.get_labels()}
+    for label_name in labels:
+        if label_name not in existing_labels:
+            # Create with default gray color
+            repo.create_label(label_name, "e4e669")
+            logger.info(f"Created label '{label_name}' in {repo_name}")
+
+    # Add labels to PR
+    issue.add_to_labels(*labels)
+    logger.info(f"Added labels {labels} to PR #{pr_number} in {repo_name}")
