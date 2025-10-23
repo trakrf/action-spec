@@ -32,18 +32,25 @@ jobs:
 
       - name: Check for AWS Account IDs
         run: |
-          # Exclude standard directories and skip common test IDs
-          # Allow: 999999999999 (test ID), 123456789012 (AWS docs example), 000000000000, 111111111111
+          # Exclude standard directories and skip common test IDs + official AWS AMI publishers
+          # Test/Example IDs: 000000000000, 111111111111, 999999999999, 123456789012
+          # Official AMI Publishers:
+          #   099720109477 = Canonical (Ubuntu AMIs)
+          #   801119661308 = Microsoft (Windows Server AMIs)
+          #   137112412989 = Amazon Linux AMIs
+          #   591542846629 = AWS Marketplace
+          #   679593333241 = AWS Deep Learning AMIs
+          #   898082745236 = AWS ECS-Optimized AMIs
           if grep -r --exclude-dir={node_modules,.git,dist,build} \
              -E "[0-9]{12}" \
              --include="*.tf" --include="*.py" --include="*.js" \
              --include="*.yml" --include="*.yaml" . | \
-             grep -vE "(999999999999|123456789012|000000000000|111111111111)"; then
+             grep -vE "(000000000000|111111111111|999999999999|123456789012|099720109477|801119661308|137112412989|591542846629|679593333241|898082745236)"; then
             echo "❌ Found AWS account ID patterns"
             echo "Review and use variables instead of hardcoded IDs"
             exit 1
           fi
-          echo "✅ No AWS account IDs found (test IDs allowed)"
+          echo "✅ No AWS account IDs found (test IDs and official AMI publishers allowed)"
 
       - name: Check for Private IP Addresses
         run: |
