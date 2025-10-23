@@ -1,5 +1,83 @@
 # Shipped Features
 
+## Demo Phase D3: GitHub Action - Workflow Dispatch for Pod Deployment
+- **Date**: 2025-10-23
+- **Branch**: feature/active-demo-phase-d3
+- **Commit**: a7f022f
+- **PR**: https://github.com/trakrf/action-spec/pull/17
+- **Summary**: GitHub Actions workflow for programmatic infrastructure deployment via workflow_dispatch, enabling spec-editor UI to deploy customer pods
+- **Key Changes**:
+  - Created `.github/workflows/deploy-pod.yml` with workflow_dispatch trigger (4 inputs)
+  - Inputs: customer (choice), environment (choice), instance_name (string), waf_enabled (boolean)
+  - Python script with PyYAML for safe spec.yml updates and structure validation
+  - Idempotent git commit behavior (skips when no changes detected)
+  - Full OpenTofu deployment pipeline (init/plan/apply with version 1.8.0)
+  - AWS credentials via GitHub secrets with aws-actions/configure-aws-credentials@v4
+  - Deployment summary with OpenTofu outputs using GitHub step summaries
+  - Smart error handling: FileNotFoundError → lists valid combinations, YAML parse errors → shows file path
+  - Boolean string conversion for GitHub's workflow input format
+  - Clear commit messages with deployment details for audit trail
+- **Validation**: ✅ All checks passed (YAML syntax valid, workflow executed successfully in 32 seconds, Run #18760395171)
+
+### Success Metrics
+
+**Phase D3 Success Criteria:**
+- ✅ Workflow file exists: `.github/workflows/deploy-pod.yml` - **Result**: 169 lines created, follows existing patterns from security-scan.yml
+- ✅ Manual trigger from GitHub UI works end-to-end - **Result**: Tested via temporary push trigger (Run #18760395171), 32 seconds duration
+- ✅ All 4 inputs accepted and validated - **Result**: customer (advworks|northwind|contoso), environment (dev|stg|prd), instance_name (string), waf_enabled (boolean)
+- ✅ spec.yml fetched, updated, committed successfully - **Result**: Python script with structure validation, idempotent commit behavior confirmed
+- ✅ OpenTofu init/plan/apply run successfully - **Result**: All steps completed (init, plan -out=tfplan, apply -auto-approve tfplan)
+- ✅ Infrastructure deployed matches workflow inputs - **Result**: advworks-dev-web1 deployed to AWS, accessible via ALB
+- ✅ Git history shows deployment commits - **Result**: Commit ebcdbd1 "deploy: Update advworks/dev - instance=web1, waf=false"
+- ✅ Workflow can be called via GitHub API - **Result**: workflow_dispatch supports `gh workflow run deploy-pod.yml -f ...`
+- ✅ Clear error messages on failure - **Result**: Structure validation with helpful feedback (lists valid combinations, shows file paths)
+
+**Overall Success**: 100% of metrics achieved (9/9)
+
+### Technical Details
+
+**Workflow Features:**
+- **actions/checkout@v5** with fetch-depth: 0 for full commit history
+- **Python 3.12** with PyYAML for spec.yml manipulation
+- **Structure validation** checks for required keys (spec, compute, security.waf) before updates
+- **Boolean conversion** handles GitHub's string input format (converts "true"/"false" strings to Python booleans)
+- **Idempotent commits** via `git diff --staged --quiet` check (skips when no changes)
+- **OpenTofu 1.8.0** via opentofu/setup-opentofu@v1 action
+- **AWS credentials** with region default (us-east-2) if not specified
+- **GitHub Actions bot** as committer (github-actions[bot])
+
+**Error Handling:**
+- FileNotFoundError → Lists valid customer/environment combinations
+- YAML parse errors → Shows file path and specific error
+- Structure validation → Checks required keys before updates
+- OpenTofu failures → Displayed in workflow logs
+
+**Testing Results:**
+- Test Run #18760395171: All steps passed in 32 seconds
+- Steps verified: Checkout, Python setup, PyYAML install, spec.yml update, commit (idempotent skip), AWS auth, OpenTofu init/plan/apply, deployment summary
+- Idempotent behavior confirmed: No commit when spec.yml unchanged
+- Infrastructure deployed successfully to AWS
+
+**Prerequisites:**
+AWS credentials configured as GitHub secrets:
+- `AWS_ACCESS_KEY_ID` (required)
+- `AWS_SECRET_ACCESS_KEY` (required)
+- `AWS_REGION` (optional, defaults to us-east-2)
+
+**Usage:**
+- **GitHub UI**: Actions → Deploy Pod → Run workflow
+- **GitHub API**: `gh workflow run deploy-pod.yml -f customer=advworks -f environment=dev -f instance_name=app1 -f waf_enabled=true`
+
+**Design Decisions:**
+1. AWS Authentication: GitHub secrets (KISS approach, can migrate to OIDC later)
+2. spec.yml Updates: Full implementation with PyYAML (creates audit trail, enables GitOps)
+3. Commit Behavior: Idempotent (skips when no changes)
+4. Error Handling: Fail fast with clear, actionable messages
+
+**Enables**: Phase D4 (Flask app discovers pods), Phase D5 (Flask app triggers deployments)
+
+---
+
 ## Demo Phase D2: ALB + Conditional WAF
 - **Date**: 2025-10-23
 - **Branch**: feature/active-demo-phase-d2
