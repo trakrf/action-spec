@@ -57,75 +57,142 @@ jobs:
       - name: Install PyYAML
         run: pip install pyyaml
 
-      - name: Update spec.yml
+      - name: Create or Update spec.yml
         run: |
           python3 << 'EOF'
           import yaml
           import sys
           import os
+          import shutil
 
           spec_file = os.environ['SPEC_FILE']
+          pod_path = os.environ['POD_PATH']
+          customer = os.environ['CUSTOMER']
+          environment = os.environ['ENVIRONMENT']
           instance_name = os.environ['INSTANCE_NAME']
           waf_enabled = os.environ['WAF_ENABLED']
 
           # Convert string boolean to Python boolean
           waf_enabled_bool = waf_enabled.lower() == 'true'
 
-          try:
-              # Read existing spec
-              with open(spec_file, 'r') as f:
-                  spec = yaml.safe_load(f)
+          # Check if spec.yml exists
+          spec_exists = os.path.exists(spec_file)
 
-              # Validate structure
-              if not spec or 'spec' not in spec:
-                  print(f"❌ ERROR: Invalid spec.yml structure - missing 'spec' key")
-                  sys.exit(1)
+          if not spec_exists:
+              # CREATE MODE: New pod
+              print(f"📝 Creating new pod: {customer}/{environment}")
 
-              if 'compute' not in spec['spec']:
-                  print(f"❌ ERROR: Invalid spec.yml structure - missing 'spec.compute' key")
-                  sys.exit(1)
+              # Create directory structure
+              os.makedirs(pod_path, exist_ok=True)
+              print(f"✅ Created directory: {pod_path}")
 
-              if 'security' not in spec['spec'] or 'waf' not in spec['spec']['security']:
-                  print(f"❌ ERROR: Invalid spec.yml structure - missing 'spec.security.waf' key")
-                  sys.exit(1)
+              # Create new spec.yml from template
+              spec = {
+                  'apiVersion': 'v1',
+                  'kind': 'Pod',
+                  'metadata': {
+                      'customer': customer,
+                      'environment': environment
+                  },
+                  'spec': {
+                      'compute': {
+                          'instance_name': instance_name,
+                          'instance_type': 't4g.nano'  # Default instance type
+                      },
+                      'security': {
+                          'waf': {
+                              'enabled': waf_enabled_bool
+                          }
+                      }
+                  }
+              }
 
-              # Update fields from workflow inputs
-              spec['spec']['compute']['instance_name'] = instance_name
-              spec['spec']['security']['waf']['enabled'] = waf_enabled_bool
+              # Copy Terraform files from template (demo/infra/advworks/dev)
+              template_dir = 'demo/infra/advworks/dev'
+              tf_files = ['backend.tf', 'main.tf', 'providers.tf', 'variables.tf']
 
-              # Write updated spec
+              for tf_file in tf_files:
+                  src = os.path.join(template_dir, tf_file)
+                  dst = os.path.join(pod_path, tf_file)
+                  if os.path.exists(src):
+                      shutil.copy2(src, dst)
+                      print(f"✅ Copied {tf_file} from template")
+                  else:
+                      print(f"⚠️  Warning: Template file not found: {src}")
+
+              # Write spec.yml
               with open(spec_file, 'w') as f:
                   yaml.dump(spec, f, default_flow_style=False, sort_keys=False)
 
-              print(f"✅ Updated spec.yml:")
+              print(f"✅ Created spec.yml:")
+              print(f"   customer: {customer}")
+              print(f"   environment: {environment}")
               print(f"   instance_name: {instance_name}")
+              print(f"   instance_type: t4g.nano")
               print(f"   waf.enabled: {waf_enabled_bool}")
 
-          except FileNotFoundError:
-              print(f"❌ ERROR: spec.yml not found at {spec_file}")
-              print(f"   Valid combinations: advworks/dev, advworks/stg, advworks/prd, northwind/dev, northwind/prd, contoso/dev")
-              sys.exit(1)
-          except yaml.YAMLError as e:
-              print(f"❌ ERROR: Failed to parse YAML: {e}")
-              sys.exit(1)
-          except Exception as e:
-              print(f"❌ ERROR: Unexpected error updating spec.yml: {e}")
-              sys.exit(1)
+          else:
+              # UPDATE MODE: Existing pod
+              print(f"📝 Updating existing pod: {customer}/{environment}")
+
+              try:
+                  # Read existing spec
+                  with open(spec_file, 'r') as f:
+                      spec = yaml.safe_load(f)
+
+                  # Validate structure
+                  if not spec or 'spec' not in spec:
+                      print(f"❌ ERROR: Invalid spec.yml structure - missing 'spec' key")
+                      sys.exit(1)
+
+                  if 'compute' not in spec['spec']:
+                      print(f"❌ ERROR: Invalid spec.yml structure - missing 'spec.compute' key")
+                      sys.exit(1)
+
+                  if 'security' not in spec['spec'] or 'waf' not in spec['spec']['security']:
+                      print(f"❌ ERROR: Invalid spec.yml structure - missing 'spec.security.waf' key")
+                      sys.exit(1)
+
+                  # Update fields from workflow inputs
+                  spec['spec']['compute']['instance_name'] = instance_name
+                  spec['spec']['security']['waf']['enabled'] = waf_enabled_bool
+
+                  # Write updated spec
+                  with open(spec_file, 'w') as f:
+                      yaml.dump(spec, f, default_flow_style=False, sort_keys=False)
+
+                  print(f"✅ Updated spec.yml:")
+                  print(f"   instance_name: {instance_name}")
+                  print(f"   waf.enabled: {waf_enabled_bool}")
+
+              except yaml.YAMLError as e:
+                  print(f"❌ ERROR: Failed to parse YAML: {e}")
+                  sys.exit(1)
+              except Exception as e:
+                  print(f"❌ ERROR: Unexpected error updating spec.yml: {e}")
+                  sys.exit(1)
           EOF
 
-      - name: Commit spec.yml
+      - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add ${{ env.SPEC_FILE }}
+
+          # Add all files in the pod directory (handles both new and updated pods)
+          git add ${{ env.POD_PATH }}
 
           # Only commit if there are changes
           if git diff --staged --quiet; then
-            echo "✅ No changes to spec.yml, skipping commit"
+            echo "✅ No changes to commit, skipping"
           else
-            git commit -m "deploy: Update ${{ env.CUSTOMER }}/${{ env.ENVIRONMENT }} - instance=${{ env.INSTANCE_NAME }}, waf=${{ env.WAF_ENABLED }}"
+            # Check if this is a new pod or update
+            if [ -z "$(git log --all --pretty=format: --name-only -- ${{ env.SPEC_FILE }} | head -1)" ]; then
+              git commit -m "deploy: Create new pod ${{ env.CUSTOMER }}/${{ env.ENVIRONMENT }} - instance=${{ env.INSTANCE_NAME }}, waf=${{ env.WAF_ENABLED }}"
+            else
+              git commit -m "deploy: Update ${{ env.CUSTOMER }}/${{ env.ENVIRONMENT }} - instance=${{ env.INSTANCE_NAME }}, waf=${{ env.WAF_ENABLED }}"
+            fi
             git push
-            echo "✅ Committed and pushed spec.yml changes"
+            echo "✅ Committed and pushed changes"
           fi
 
       - name: Configure AWS credentials
