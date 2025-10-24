@@ -9,4 +9,4 @@ spec:
     instance_type: t4g.nano
   security:
     waf:
-      enabled: true
+      enabled: false
