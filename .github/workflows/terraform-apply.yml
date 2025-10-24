@@ -1,0 +1,135 @@
+name: Terraform Apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'demo/infra/**/spec.yml'
+
+env:
+  AWS_REGION: us-east-1
+  TF_VERSION: 1.6.0
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # For AWS OIDC
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed spec files
+        id: detect
+        run: |
+          # Find spec.yml files that changed in the merged commit
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD | grep 'demo/infra/.*/.*spec\.yml' || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No spec.yml files changed in this push"
+            exit 0
+          fi
+
+          # Parse first changed spec (multi-spec not yet supported)
+          SPEC_PATH=$(echo "$CHANGED_FILES" | head -1)
+          echo "spec_path=$SPEC_PATH" >> $GITHUB_OUTPUT
+
+          # Extract customer and env from path
+          CUSTOMER=$(echo "$SPEC_PATH" | cut -d'/' -f3)
+          ENV=$(echo "$SPEC_PATH" | cut -d'/' -f4)
+
+          echo "customer=$CUSTOMER" >> $GITHUB_OUTPUT
+          echo "env=$ENV" >> $GITHUB_OUTPUT
+          echo "tf_dir=demo/infra/$CUSTOMER/$ENV" >> $GITHUB_OUTPUT
+
+          echo "🚀 Applying: $CUSTOMER/$ENV"
+          echo "   Spec: $SPEC_PATH"
+          echo "   TF Dir: demo/infra/$CUSTOMER/$ENV"
+
+      - name: Setup Terraform
+        if: steps.detect.outputs.spec_path != ''
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS Credentials
+        if: steps.detect.outputs.spec_path != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        if: steps.detect.outputs.spec_path != ''
+        working-directory: ${{ steps.detect.outputs.tf_dir }}
+        run: terraform init
+
+      - name: Terraform Apply
+        if: steps.detect.outputs.spec_path != ''
+        id: apply
+        working-directory: ${{ steps.detect.outputs.tf_dir }}
+        run: |
+          terraform apply -auto-approve -no-color 2>&1 | tee apply.txt
+          echo "exitcode=$?" >> $GITHUB_OUTPUT
+
+      - name: Comment on Commit with Apply Result
+        if: steps.detect.outputs.spec_path != ''
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const customer = '${{ steps.detect.outputs.customer }}';
+            const env = '${{ steps.detect.outputs.env }}';
+            const tfDir = '${{ steps.detect.outputs.tf_dir }}';
+            const exitCode = '${{ steps.apply.outputs.exitcode }}';
+
+            // Read apply output
+            let applyOutput = '';
+            try {
+              applyOutput = fs.readFileSync(`${tfDir}/apply.txt`, 'utf8');
+            } catch (e) {
+              applyOutput = 'Could not read apply output';
+            }
+
+            // Truncate if too long
+            if (applyOutput.length > 60000) {
+              applyOutput = applyOutput.substring(0, 60000) + '\n\n... (truncated)';
+            }
+
+            const status = exitCode === '0' ? '✅ Success' : '❌ Failed';
+
+            const output = `## ${status}: Terraform Apply - ${customer}/${env}
+
+            <details>
+            <summary>📋 Show Apply Output</summary>
+
+            \`\`\`terraform
+            ${applyOutput}
+            \`\`\`
+
+            </details>
+
+            ---
+
+            **Directory**: \`${tfDir}\`
+            **Commit**: ${context.sha.substring(0, 7)}
+            **Workflow**: [\`terraform-apply.yml\`](https://github.com/${{ github.repository }}/blob/main/.github/workflows/terraform-apply.yml)
+            `;
+
+            github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: output
+            });
+
+      - name: Check Apply Status
+        if: steps.detect.outputs.spec_path != '' && steps.apply.outputs.exitcode != '0'
+        run: |
+          echo "❌ Terraform apply failed with exit code ${{ steps.apply.outputs.exitcode }}"
+          exit 1

@@ -200,6 +200,26 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          # Rebase on latest branch to avoid stale branch errors
+          echo "🔄 Fetching latest changes..."
+          git fetch origin ${{ github.ref_name }}
+
+          # Check if we need to rebase
+          LOCAL=$(git rev-parse HEAD)
+          REMOTE=$(git rev-parse origin/${{ github.ref_name }})
+
+          if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "⚠️  Branch has moved forward, rebasing..."
+            # Stash any changes first
+            git stash
+            git rebase origin/${{ github.ref_name }}
+            # Reapply changes
+            git stash pop || echo "No stashed changes to pop"
+            echo "✅ Rebased on latest origin/${{ github.ref_name }}"
+          else
+            echo "✅ Branch is up to date"
+          fi
+
           # Add all files in the pod directory (handles both new and updated pods)
           git add ${{ env.POD_PATH }}
 
