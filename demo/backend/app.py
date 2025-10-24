@@ -46,8 +46,8 @@ try:
     github = Github(GH_TOKEN)
     repo = github.get_repo(GH_REPO)
     # Test connectivity
-    repo.get_contents(SPECS_PATH)
-    logger.info(f"✓ Successfully connected to GitHub repo: {GH_REPO}")
+    repo.get_contents(SPECS_PATH, ref=WORKFLOW_BRANCH)
+    logger.info(f"✓ Successfully connected to GitHub repo: {GH_REPO} (branch: {WORKFLOW_BRANCH})")
 except BadCredentialsException:
     logger.error("GitHub authentication failed: Invalid or expired token")
     logger.error("Check that GH_TOKEN has 'repo' scope")
@@ -154,7 +154,7 @@ def fetch_spec(customer, env):
 
     try:
         logger.info(f"Fetching spec: {path}")
-        content = repo.get_contents(path)
+        content = repo.get_contents(path, ref=WORKFLOW_BRANCH)
         spec_yaml = content.decoded_content.decode('utf-8')
         spec = yaml.safe_load(spec_yaml)
         logger.info(f"✓ Successfully parsed spec for {customer}/{env}")
@@ -183,21 +183,21 @@ def list_all_pods():
     pods = []
 
     try:
-        customers = repo.get_contents(SPECS_PATH)
+        customers = repo.get_contents(SPECS_PATH, ref=WORKFLOW_BRANCH)
 
         for customer in customers:
             if customer.type != "dir":
                 continue
 
             try:
-                envs = repo.get_contents(f"{SPECS_PATH}/{customer.name}")
+                envs = repo.get_contents(f"{SPECS_PATH}/{customer.name}", ref=WORKFLOW_BRANCH)
                 for env in envs:
                     if env.type != "dir":
                         continue
 
                     # Check if spec.yml exists
                     try:
-                        repo.get_contents(f"{SPECS_PATH}/{customer.name}/{env.name}/spec.yml")
+                        repo.get_contents(f"{SPECS_PATH}/{customer.name}/{env.name}/spec.yml", ref=WORKFLOW_BRANCH)
                         pods.append({"customer": customer.name, "env": env.name})
                         logger.debug(f"  Found pod: {customer.name}/{env.name}")
                     except:
@@ -330,7 +330,7 @@ def deploy():
         if mode == 'new':
             path = f"{SPECS_PATH}/{customer}/{env}/spec.yml"
             try:
-                repo.get_contents(path)
+                repo.get_contents(path, ref=WORKFLOW_BRANCH)
                 # File exists - reject with 409 Conflict
                 logger.warning(f"Attempted to create existing pod: {customer}/{env}")
                 pods = list_all_pods()
@@ -481,7 +481,7 @@ def health():
     """Health check: validate GitHub connectivity and show rate limit"""
     try:
         # Test connectivity
-        repo.get_contents(SPECS_PATH)
+        repo.get_contents(SPECS_PATH, ref=WORKFLOW_BRANCH)
 
         # Get rate limit info
         rate_limit = github.get_rate_limit()
