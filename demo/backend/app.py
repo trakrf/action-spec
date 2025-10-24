@@ -3,7 +3,7 @@ Spec Editor Flask App - Demo Phase D4A
 Read-only UI for viewing infrastructure pod specifications.
 """
 
-from flask import Flask, render_template, jsonify, abort, request
+from flask import Flask, render_template, jsonify, abort, request, redirect
 from github import Github
 from github.GithubException import BadCredentialsException, RateLimitExceededException, GithubException
 import yaml
@@ -57,9 +57,9 @@ except Exception as e:
     logger.error(f"Repository: {GH_REPO}, Path: {SPECS_PATH}")
     sys.exit(1)
 
-# Simple cache with 5-minute TTL
+# Simple cache with 30-second TTL (demo usage has plenty of API quota)
 _cache = {}
-CACHE_TTL = 300  # 5 minutes in seconds
+CACHE_TTL = 30  # 30 seconds
 
 def get_cached(key):
     """Get cached value if not expired"""
@@ -240,6 +240,14 @@ def index():
     except Exception as e:
         logger.error(f"Error rendering home page: {e}")
         abort(500)
+
+@app.route('/refresh')
+def refresh():
+    """Clear cache and redirect to home page"""
+    global _cache
+    _cache = {}
+    logger.info("Cache cleared by user refresh")
+    return redirect('/')
 
 @app.route('/pod/<customer>/<env>')
 def view_pod(customer, env):
