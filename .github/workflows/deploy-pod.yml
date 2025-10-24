@@ -107,10 +107,11 @@ jobs:
                   }
               }
 
-              # Copy Terraform files from template (demo/infra/advworks/dev)
+              # Copy and template Terraform files from template (demo/infra/advworks/dev)
               template_dir = 'demo/infra/advworks/dev'
-              tf_files = ['backend.tf', 'main.tf', 'providers.tf', 'variables.tf']
+              tf_files = ['main.tf', 'providers.tf', 'variables.tf']
 
+              # Copy non-templated files as-is
               for tf_file in tf_files:
                   src = os.path.join(template_dir, tf_file)
                   dst = os.path.join(pod_path, tf_file)
@@ -119,6 +120,27 @@ jobs:
                       print(f"✅ Copied {tf_file} from template")
                   else:
                       print(f"⚠️  Warning: Template file not found: {src}")
+
+              # Template backend.tf with correct state path
+              backend_template = os.path.join(template_dir, 'backend.tf')
+              backend_dst = os.path.join(pod_path, 'backend.tf')
+
+              if os.path.exists(backend_template):
+                  with open(backend_template, 'r') as f:
+                      backend_content = f.read()
+
+                  # Replace hardcoded path with actual customer/environment
+                  backend_content = backend_content.replace(
+                      'key            = "demo/advworks/dev/terraform.tfstate"',
+                      f'key            = "demo/{customer}/{environment}/terraform.tfstate"'
+                  )
+
+                  with open(backend_dst, 'w') as f:
+                      f.write(backend_content)
+
+                  print(f"✅ Created backend.tf with state path: demo/{customer}/{environment}/terraform.tfstate")
+              else:
+                  print(f"⚠️  Warning: Template file not found: {backend_template}")
 
               # Write spec.yml
               with open(spec_file, 'w') as f:
