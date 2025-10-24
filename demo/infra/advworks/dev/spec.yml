@@ -5,8 +5,8 @@ metadata:
   environment: dev
 spec:
   compute:
-    instance_name: web1
+    instance_name: web4
     instance_type: t4g.nano
   security:
     waf:
-      enabled: false
+      enabled: true
