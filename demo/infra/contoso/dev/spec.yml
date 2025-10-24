@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  customer: contoso
+  environment: dev
+spec:
+  compute:
+    instance_name: host1
+    instance_type: t4g.nano
+  security:
+    waf:
+      enabled: false
