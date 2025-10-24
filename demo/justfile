@@ -82,7 +82,7 @@ dev-port PORT:
     flask --app app run --debug --host 0.0.0.0 --port {{PORT}}
 
 # Show Flask logs (if running in background)
-logs:
+logs-flask:
     @tail -f /tmp/flask_run.log 2>/dev/null || echo "No Flask logs found at /tmp/flask_run.log"
 
 # Check if all environment variables are set
@@ -102,3 +102,92 @@ check-env:
 
     echo "✓ GH_REPO=${GH_REPO:-trakrf/action-spec}"
     echo "✓ SPECS_PATH=${SPECS_PATH:-demo/infra}"
+
+# === Docker Compose Commands ===
+
+# Start docker compose services (detached)
+up:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ ! -f ".env" ]; then
+        echo "⚠️  Warning: .env file not found"
+        echo "   Copy .env.example and add your GH_TOKEN:"
+        echo "   cp .env.example .env"
+        echo ""
+    fi
+
+    echo "🚀 Starting docker compose services..."
+    docker compose up -d
+    echo ""
+    echo "✓ Services started"
+    echo "  Spec-editor: http://localhost:5000"
+    echo "  Demo app: http://localhost:8080"
+    echo ""
+    echo "Run 'just logs' to view logs"
+    echo "Run 'just ps' to check status"
+
+# Stop docker compose services
+down:
+    #!/usr/bin/env bash
+    echo "🛑 Stopping docker compose services..."
+    docker compose down
+    echo "✓ Services stopped"
+
+# View logs from all services
+logs:
+    docker compose logs -f
+
+# View logs from spec-editor only
+logs-spec:
+    docker compose logs -f spec-editor
+
+# View logs from demo-app only
+logs-demo:
+    docker compose logs -f demo-app
+
+# Restart docker compose services
+restart:
+    #!/usr/bin/env bash
+    echo "🔄 Restarting docker compose services..."
+    docker compose restart
+    echo "✓ Services restarted"
+
+# Restart only spec-editor
+restart-spec:
+    docker compose restart spec-editor
+
+# Rebuild docker images (no cache)
+build:
+    #!/usr/bin/env bash
+    echo "🔨 Building docker images..."
+    docker compose build --no-cache
+    echo "✓ Build complete"
+
+# Rebuild and restart services
+rebuild: build
+    just down
+    just up
+
+# Show running containers
+ps:
+    docker compose ps
+
+# Check health of spec-editor
+health-docker:
+    @echo "Checking spec-editor health..."
+    @curl -s http://localhost:5000/health | python3 -m json.tool || echo "❌ Service not responding"
+
+# Pull latest published image from GHCR
+pull:
+    #!/usr/bin/env bash
+    echo "📥 Pulling latest image from GHCR..."
+    docker compose pull
+    echo "✓ Pull complete. Run 'just up' to use the latest image"
+
+# Clean up docker volumes and orphaned containers
+clean-docker:
+    #!/usr/bin/env bash
+    echo "🧹 Cleaning up docker resources..."
+    docker compose down -v --remove-orphans
+    echo "✓ Cleanup complete"
