@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ customer }} / {{ env }} - Spec Editor</title>
+    <title>{% if mode == 'edit' %}{{ customer }} / {{ env }}{% else %}Create New Pod{% endif %} - Spec Editor</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-50 min-h-screen">
     <div class="container mx-auto px-4 py-8 max-w-4xl">
-        <!-- Breadcrumb Navigation -->
+        <!-- Breadcrumb Navigation (edit mode only) -->
+        {% if mode == 'edit' %}
         <nav class="mb-6 text-sm">
             <a href="/" class="text-blue-600 hover:underline">Home</a>
             <span class="text-gray-400 mx-2">/</span>
@@ -16,56 +17,95 @@
             <span class="text-gray-400 mx-2">/</span>
             <span class="text-gray-700 font-medium">{{ env }}</span>
         </nav>
+        {% endif %}
 
-        <!-- Header with Environment Badge -->
+        <!-- Header -->
         <header class="mb-8">
-            <div class="flex items-center justify-between mb-4">
-                <h1 class="text-3xl font-bold text-gray-900 capitalize">
-                    {{ customer }}
+            {% if mode == 'edit' %}
+                <!-- Edit Mode: Show customer/env as badges -->
+                <div class="flex items-center justify-between mb-4">
+                    <h1 class="text-3xl font-bold text-gray-900 capitalize">
+                        {{ customer }}
+                    </h1>
+                    {% if env == 'dev' %}
+                    <span class="px-4 py-2 bg-green-100 text-green-800 text-lg font-medium rounded-full">
+                        {{ env }}
+                    </span>
+                    {% elif env == 'stg' %}
+                    <span class="px-4 py-2 bg-yellow-100 text-yellow-800 text-lg font-medium rounded-full">
+                        {{ env }}
+                    </span>
+                    {% elif env == 'prd' %}
+                    <span class="px-4 py-2 bg-red-100 text-red-800 text-lg font-medium rounded-full">
+                        {{ env }}
+                    </span>
+                    {% else %}
+                    <span class="px-4 py-2 bg-gray-100 text-gray-800 text-lg font-medium rounded-full">
+                        {{ env }}
+                    </span>
+                    {% endif %}
+                </div>
+            {% else %}
+                <!-- Create Mode: Simple title -->
+                <h1 class="text-3xl font-bold text-gray-900 mb-4">
+                    Create New Pod
                 </h1>
-                {% if env == 'dev' %}
-                <span class="px-4 py-2 bg-green-100 text-green-800 text-lg font-medium rounded-full">
-                    {{ env }}
-                </span>
-                {% elif env == 'stg' %}
-                <span class="px-4 py-2 bg-yellow-100 text-yellow-800 text-lg font-medium rounded-full">
-                    {{ env }}
-                </span>
-                {% elif env == 'prd' %}
-                <span class="px-4 py-2 bg-red-100 text-red-800 text-lg font-medium rounded-full">
-                    {{ env }}
-                </span>
-                {% else %}
-                <span class="px-4 py-2 bg-gray-100 text-gray-800 text-lg font-medium rounded-full">
-                    {{ env }}
-                </span>
-                {% endif %}
-            </div>
-
-            <!-- Read-only Notice -->
-            <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
-                <p class="text-blue-700">
-                    <strong>Read-only mode:</strong> This is Phase D4B - viewing only.
-                    Phase D5 will enable editing and deployment.
-                </p>
-            </div>
+            {% endif %}
         </header>
 
-        <!-- Pod Configuration Form (Read-only) -->
+        <!-- Pod Configuration Form -->
         <main>
             <div class="bg-white rounded-lg shadow-md p-6 mb-6">
                 <h2 class="text-xl font-semibold text-gray-800 mb-4">
                     Pod Configuration
                 </h2>
 
-                <form class="space-y-6">
-                    <!-- Computed Instance Name (Display only) -->
+                <form method="POST" action="/deploy" class="space-y-6">
+                    <!-- Customer and Environment Fields -->
+                    {% if mode == 'edit' %}
+                        <!-- Edit Mode: Hidden inputs -->
+                        <input type="hidden" name="customer" value="{{ customer }}">
+                        <input type="hidden" name="environment" value="{{ env }}">
+                        <input type="hidden" name="mode" value="edit">
+                    {% else %}
+                        <!-- Create Mode: Dropdowns -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="customer" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Customer *
+                                </label>
+                                <select name="customer" id="customer" required
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="">-- Select Customer --</option>
+                                    <option value="advworks">advworks</option>
+                                    <option value="northwind">northwind</option>
+                                    <option value="contoso">contoso</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label for="environment" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Environment *
+                                </label>
+                                <select name="environment" id="environment" required
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="">-- Select Environment --</option>
+                                    <option value="dev">dev (Development)</option>
+                                    <option value="stg">stg (Staging)</option>
+                                    <option value="prd">prd (Production)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <input type="hidden" name="mode" value="new">
+                    {% endif %}
+
+                    <!-- Computed Instance Name Preview -->
                     <div class="bg-gray-50 p-4 rounded border border-gray-200">
                         <label class="block text-sm font-medium text-gray-700 mb-2">
-                            Full Instance Name
+                            Full Instance Name Preview
                         </label>
                         <p class="text-lg font-mono text-gray-900">
-                            {{ customer }}-{{ env }}-{{ spec.spec.compute.instance_name }}
+                            <span id="customer-part">{{ customer if mode == 'edit' else '?' }}</span>-<span id="env-part">{{ env if mode == 'edit' else '?' }}</span>-<span id="name-part">{{ spec.spec.compute.instance_name if mode == 'edit' else '?' }}</span>
                         </p>
                         <p class="text-xs text-gray-500 mt-1">
                             Format: {customer}-{environment}-{instance_name}
@@ -79,24 +119,30 @@
                         <div class="space-y-4">
                             <div>
                                 <label for="instance_name" class="block text-sm font-medium text-gray-700 mb-2">
-                                    Instance Name
+                                    Instance Name *
                                 </label>
                                 <input type="text"
+                                       name="instance_name"
                                        id="instance_name"
-                                       value="{{ spec.spec.compute.instance_name }}"
-                                       disabled
-                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700">
+                                       value="{{ spec.spec.compute.instance_name if mode == 'edit' else '' }}"
+                                       required
+                                       pattern="[a-z0-9-]+"
+                                       placeholder="e.g., web1, app1"
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <small class="text-gray-600 text-xs">Lowercase letters, numbers, hyphens only</small>
                             </div>
 
                             <div>
                                 <label for="instance_type" class="block text-sm font-medium text-gray-700 mb-2">
-                                    Instance Type
+                                    Instance Type *
                                 </label>
                                 <input type="text"
+                                       name="instance_type"
                                        id="instance_type"
-                                       value="{{ spec.spec.compute.instance_type }}"
-                                       disabled
-                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700">
+                                       value="{{ spec.spec.compute.instance_type if mode == 'edit' else 't4g.nano' }}"
+                                       required
+                                       placeholder="t4g.nano"
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                             </div>
                         </div>
                     </div>
@@ -107,10 +153,10 @@
 
                         <div class="flex items-center">
                             <input type="checkbox"
+                                   name="waf_enabled"
                                    id="waf_enabled"
-                                   {% if spec.spec.security.waf.enabled %}checked{% endif %}
-                                   disabled
-                                   class="h-5 w-5 text-blue-600 border-gray-300 rounded">
+                                   {% if mode == 'edit' and spec.spec.security.waf.enabled %}checked{% endif %}
+                                   class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
                             <label for="waf_enabled" class="ml-3 text-sm font-medium text-gray-700">
                                 Web Application Firewall (WAF) Enabled
                             </label>
@@ -121,13 +167,12 @@
                     <div class="border-t pt-6 flex justify-between">
                         <a href="/"
                            class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
-                            ← Back to Pods
+                            ← Back to Home
                         </a>
 
-                        <button type="button"
-                                disabled
-                                class="px-6 py-2 bg-gray-300 text-gray-500 rounded-lg cursor-not-allowed">
-                            Save Changes (Disabled in D4B)
+                        <button type="submit"
+                                class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">
+                            Preview Deployment
                         </button>
                     </div>
                 </form>
@@ -143,9 +188,43 @@
                 </a>
             </p>
             <p class="mt-2">
-                Demo Phase D4B - Pod Detail View (Read-only)
+                Demo Phase D5A - Form Operations
             </p>
         </footer>
     </div>
+
+    <!-- Live Preview JavaScript -->
+    <script>
+        // Update computed instance name as user types/selects
+        const customerPart = document.getElementById('customer-part');
+        const envPart = document.getElementById('env-part');
+        const namePart = document.getElementById('name-part');
+
+        {% if mode == 'new' %}
+        // Create mode: Listen to dropdowns and input
+        const customerSelect = document.getElementById('customer');
+        const envSelect = document.getElementById('environment');
+        const nameInput = document.getElementById('instance_name');
+
+        customerSelect.addEventListener('change', () => {
+            customerPart.textContent = customerSelect.value || '?';
+        });
+
+        envSelect.addEventListener('change', () => {
+            envPart.textContent = envSelect.value || '?';
+        });
+
+        nameInput.addEventListener('input', () => {
+            namePart.textContent = nameInput.value || '?';
+        });
+        {% else %}
+        // Edit mode: Only listen to instance_name input
+        const nameInput = document.getElementById('instance_name');
+
+        nameInput.addEventListener('input', () => {
+            namePart.textContent = nameInput.value || '{{ spec.spec.compute.instance_name }}';
+        });
+        {% endif %}
+    </script>
 </body>
 </html>
