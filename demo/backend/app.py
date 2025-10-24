@@ -3,7 +3,7 @@ Spec Editor Flask App - Demo Phase D4A
 Read-only UI for viewing infrastructure pod specifications.
 """
 
-from flask import Flask, render_template, jsonify, abort
+from flask import Flask, render_template, jsonify, abort, request
 from github import Github
 from github.GithubException import BadCredentialsException, RateLimitExceededException
 import yaml
@@ -102,6 +102,35 @@ def validate_path_component(value, param_name):
     if '..' in value or '/' in value or '\\' in value:
         logger.warning(f"Path traversal attempt detected: {param_name}={value}")
         raise ValueError(f"{param_name} contains path traversal attempt")
+
+    return value
+
+def validate_instance_name(value):
+    """
+    Validate instance_name (stricter than customer/env).
+
+    Must be:
+    - Lowercase letters, numbers, hyphens only
+    - 1-30 characters
+    - Cannot start or end with hyphen
+
+    Args:
+        value: The instance name to validate
+
+    Returns:
+        str: The validated value
+
+    Raises:
+        ValueError: If validation fails
+    """
+    if not value or len(value) > 30:
+        raise ValueError("instance_name must be 1-30 characters")
+
+    if not re.match(r'^[a-z0-9-]+$', value):
+        raise ValueError("instance_name must be lowercase letters, numbers, and hyphens only (no uppercase, no underscores, no spaces)")
+
+    if value.startswith('-') or value.endswith('-'):
+        raise ValueError("instance_name cannot start or end with hyphen")
 
     return value
 
@@ -221,8 +250,9 @@ def view_pod(customer, env):
         # Fetch and parse spec
         spec = fetch_spec(customer, env)
 
-        # Render form with spec data
+        # D5A: Render form with mode=edit, inputs enabled
         return render_template('form.html.j2',
+                               mode='edit',
                                customer=customer,
                                env=env,
                                spec=spec)
@@ -246,6 +276,127 @@ def view_pod(customer, env):
                                error_message=f"Could not find spec for {customer}/{env}",
                                show_pods=True,
                                pods=list_all_pods()), 404
+
+@app.route('/pod/new')
+def new_pod():
+    """Create new pod form"""
+    if not repo:
+        logger.error("GitHub client not initialized")
+        abort(500)
+
+    # Empty spec structure for template
+    empty_spec = {
+        'metadata': {
+            'customer': '',
+            'environment': ''
+        },
+        'spec': {
+            'compute': {
+                'instance_name': '',
+                'instance_type': 't4g.nano'
+            },
+            'security': {
+                'waf': {
+                    'enabled': False
+                }
+            }
+        }
+    }
+
+    return render_template('form.html.j2',
+                           mode='new',
+                           customer='',
+                           env='',
+                           spec=empty_spec)
+
+@app.route('/deploy', methods=['POST'])
+def deploy():
+    """Handle form submission - validate and preview (D5A: no actual deployment)"""
+    if not repo:
+        logger.error("GitHub client not initialized")
+        abort(500)
+
+    try:
+        # Extract and validate form data
+        customer = validate_path_component(request.form['customer'], 'customer')
+        env = validate_path_component(request.form['environment'], 'environment')
+        instance_name = validate_instance_name(request.form['instance_name'])
+        instance_type = request.form.get('instance_type', '').strip()
+        waf_enabled = request.form.get('waf_enabled') == 'on'
+        mode = request.form.get('mode', 'edit')
+
+        # Validate instance_type not empty
+        if not instance_type:
+            raise ValueError("instance_type cannot be empty")
+
+        # CRITICAL: For new pods, check if spec already exists
+        if mode == 'new':
+            path = f"{SPECS_PATH}/{customer}/{env}/spec.yml"
+            try:
+                repo.get_contents(path)
+                # File exists - reject with 409 Conflict
+                logger.warning(f"Attempted to create existing pod: {customer}/{env}")
+                pods = list_all_pods()
+                return render_template('error.html.j2',
+                    error_type="conflict",
+                    error_title="Pod Already Exists",
+                    error_message=f"Pod {customer}/{env} already exists. Choose a different customer/environment combination or edit the existing pod.",
+                    show_pods=True,
+                    pods=pods), 409
+            except:
+                # File doesn't exist - good to proceed
+                logger.info(f"Creating new pod: {customer}/{env}")
+                pass
+        else:
+            logger.info(f"Updating existing pod: {customer}/{env}")
+
+        # D5A: Preview deployment inputs (no actual workflow trigger)
+        deployment_inputs = {
+            'customer': customer,
+            'environment': env,
+            'instance_name': instance_name,
+            'instance_type': instance_type,
+            'waf_enabled': str(waf_enabled).lower()
+        }
+
+        logger.info(f"Deployment preview: {deployment_inputs}")
+
+        return render_template('success.html.j2',
+            mode=mode,
+            customer=customer,
+            env=env,
+            deployment_inputs=deployment_inputs,
+            preview_mode=True)  # D5A flag
+
+    except ValueError as e:
+        # Validation error
+        logger.warning(f"Validation error in /deploy: {e}")
+        return render_template('error.html.j2',
+            error_type="validation",
+            error_title="Invalid Input",
+            error_message=str(e),
+            show_pods=True,
+            pods=list_all_pods()), 400
+
+    except KeyError as e:
+        # Missing form field
+        logger.error(f"Missing form field: {e}")
+        return render_template('error.html.j2',
+            error_type="validation",
+            error_title="Missing Required Field",
+            error_message=f"Required field missing: {e}",
+            show_pods=False,
+            pods=[]), 400
+
+    except Exception as e:
+        # Generic error
+        logger.error(f"Deployment preview failed: {e}")
+        return render_template('error.html.j2',
+            error_type="server_error",
+            error_title="Server Error",
+            error_message=f"Failed to process form: {e}",
+            show_pods=False,
+            pods=[]), 500
 
 @app.route('/health')
 def health():
