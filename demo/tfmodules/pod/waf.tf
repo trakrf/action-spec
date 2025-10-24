@@ -13,6 +13,14 @@ resource "aws_wafv2_regex_pattern_set" "allowed_paths" {
     regex_string = "^/api/v1/.*"
   }
 
+  regular_expression {
+    regex_string = "^/spec$"
+  }
+
+  regular_expression {
+    regex_string = "^/spec/.*"
+  }
+
   tags = {
     Name        = "${var.customer}-${var.environment}-allowed-paths"
     Customer    = var.customer
