@@ -70,10 +70,6 @@
                             <dd class="font-mono text-gray-900">{{ deployment_inputs.instance_name }}</dd>
                         </div>
                         <div class="flex">
-                            <dt class="font-medium text-gray-700 w-40">Instance Type:</dt>
-                            <dd class="font-mono text-gray-900">{{ deployment_inputs.instance_type }}</dd>
-                        </div>
-                        <div class="flex">
                             <dt class="font-medium text-gray-700 w-40">WAF Enabled:</dt>
                             <dd class="font-mono text-gray-900">{{ deployment_inputs.waf_enabled }}</dd>
                         </div>
@@ -92,6 +88,13 @@
                 {% if action_url %}
                     <p class="mb-4">
                         View progress: <a href="{{ action_url }}" target="_blank" class="text-blue-600 hover:underline font-medium">GitHub Actions Run →</a>
+                    </p>
+                {% else %}
+                    <p class="mb-4">
+                        View progress: <a href="https://github.com/trakrf/action-spec/actions" target="_blank" class="text-blue-600 hover:underline font-medium">GitHub Actions Tab →</a>
+                    </p>
+                    <p class="text-sm text-gray-500 mb-4">
+                        (Could not retrieve specific run URL - check the Actions tab for the latest run)
                     </p>
                 {% endif %}
                 <p class="text-gray-600 mb-6">
