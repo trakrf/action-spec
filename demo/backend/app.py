@@ -5,7 +5,7 @@ Read-only UI for viewing infrastructure pod specifications.
 
 from flask import Flask, render_template, jsonify, abort, request
 from github import Github
-from github.GithubException import BadCredentialsException, RateLimitExceededException
+from github.GithubException import BadCredentialsException, RateLimitExceededException, GithubException
 import yaml
 import os
 import sys
@@ -28,6 +28,7 @@ app.config['SECRET_KEY'] = os.urandom(24)
 GH_TOKEN = os.environ.get('GH_TOKEN')
 GH_REPO = os.environ.get('GH_REPO', 'trakrf/action-spec')
 SPECS_PATH = os.environ.get('SPECS_PATH', 'demo/infra')
+WORKFLOW_BRANCH = os.environ.get('WORKFLOW_BRANCH', 'main')
 
 # Fail fast if GH_TOKEN missing
 if not GH_TOKEN:
@@ -38,6 +39,7 @@ if not GH_TOKEN:
 logger.info(f"Initializing Spec Editor")
 logger.info(f"GitHub Repo: {GH_REPO}")
 logger.info(f"Specs Path: {SPECS_PATH}")
+logger.info(f"Workflow Branch: {WORKFLOW_BRANCH}")
 
 # Initialize GitHub client (fail fast on auth errors)
 try:
@@ -321,13 +323,8 @@ def deploy():
         customer = validate_path_component(request.form['customer'], 'customer')
         env = validate_path_component(request.form['environment'], 'environment')
         instance_name = validate_instance_name(request.form['instance_name'])
-        instance_type = request.form.get('instance_type', '').strip()
         waf_enabled = request.form.get('waf_enabled') == 'on'
         mode = request.form.get('mode', 'edit')
-
-        # Validate instance_type not empty
-        if not instance_type:
-            raise ValueError("instance_type cannot be empty")
 
         # CRITICAL: For new pods, check if spec already exists
         if mode == 'new':
@@ -350,23 +347,94 @@ def deploy():
         else:
             logger.info(f"Updating existing pod: {customer}/{env}")
 
-        # D5A: Preview deployment inputs (no actual workflow trigger)
-        deployment_inputs = {
+        # D5B: Trigger workflow_dispatch
+        workflow_file = 'deploy-pod.yml'
+
+        # Get workflow object
+        try:
+            workflow = repo.get_workflow(workflow_file)
+        except Exception as e:
+            logger.error(f"Failed to get workflow {workflow_file}: {e}")
+            return render_template('error.html.j2',
+                error_type="not_found",
+                error_title="Workflow Not Found",
+                error_message=f"GitHub workflow '{workflow_file}' not found. Check .github/workflows/ directory.",
+                show_pods=False,
+                pods=[]), 404
+
+        # Prepare workflow inputs (must match workflow_dispatch inputs in deploy-pod.yml)
+        workflow_inputs = {
             'customer': customer,
             'environment': env,
             'instance_name': instance_name,
-            'instance_type': instance_type,
-            'waf_enabled': str(waf_enabled).lower()
+            'waf_enabled': waf_enabled  # Boolean, not string
         }
 
-        logger.info(f"Deployment preview: {deployment_inputs}")
+        logger.info(f"Triggering workflow_dispatch for {customer}/{env} with inputs: {workflow_inputs}")
 
+        # Trigger workflow dispatch on configured branch
+        try:
+            workflow.create_dispatch(
+                ref=WORKFLOW_BRANCH,
+                inputs=workflow_inputs
+            )
+        except GithubException as e:
+            logger.error(f"workflow_dispatch failed: {e.status} - {e.data}")
+
+            # Handle specific GitHub API errors
+            if e.status == 403:
+                return render_template('error.html.j2',
+                    error_type="forbidden",
+                    error_title="Permission Denied",
+                    error_message="GitHub token lacks 'workflow' scope. Update GH_TOKEN with workflow permissions.",
+                    show_pods=False,
+                    pods=[]), 403
+            elif e.status == 404:
+                return render_template('error.html.j2',
+                    error_type="not_found",
+                    error_title="Workflow Not Found",
+                    error_message=f"Workflow '{workflow_file}' or branch '{WORKFLOW_BRANCH}' not found.",
+                    show_pods=False,
+                    pods=[]), 404
+            elif e.status == 422:
+                return render_template('error.html.j2',
+                    error_type="validation",
+                    error_title="Invalid Workflow Inputs",
+                    error_message=f"Workflow rejected inputs: {e.data.get('message', 'Unknown error')}",
+                    show_pods=False,
+                    pods=[]), 422
+            else:
+                raise  # Re-raise for generic handler
+
+        # If we got here, dispatch succeeded (no exception raised)
+        logger.info(f"workflow_dispatch succeeded for {customer}/{env}")
+
+        # D5B: Get latest workflow run URL (best-effort)
+        action_url = None
+        try:
+            # Wait briefly for GitHub to create the run
+            time.sleep(2)
+
+            runs = workflow.get_runs(branch=WORKFLOW_BRANCH)
+            logger.info(f"Retrieved {runs.totalCount} workflow runs")
+            if runs.totalCount > 0:
+                latest_run = runs[0]
+                action_url = latest_run.html_url
+                logger.info(f"Latest workflow run: {action_url}")
+            else:
+                logger.warning("No workflow runs found after 2 second delay - using fallback link")
+        except Exception as e:
+            logger.warning(f"Could not retrieve workflow run URL: {e}")
+            # Non-fatal - continue without URL
+
+        # Success
         return render_template('success.html.j2',
             mode=mode,
             customer=customer,
             env=env,
-            deployment_inputs=deployment_inputs,
-            preview_mode=True)  # D5A flag
+            deployment_inputs=workflow_inputs,
+            preview_mode=False,  # D5B: actual deployment
+            action_url=action_url)
 
     except ValueError as e:
         # Validation error
@@ -388,9 +456,19 @@ def deploy():
             show_pods=False,
             pods=[]), 400
 
+    except GithubException as e:
+        # GitHub API error (not caught by specific handlers above)
+        logger.error(f"GitHub API error: {e}")
+        return render_template('error.html.j2',
+            error_type="api_error",
+            error_title="GitHub API Error",
+            error_message=f"Failed to trigger deployment: {e.data.get('message', str(e)) if hasattr(e, 'data') else str(e)}",
+            show_pods=False,
+            pods=[]), 503
+
     except Exception as e:
         # Generic error
-        logger.error(f"Deployment preview failed: {e}")
+        logger.error(f"Deployment failed: {e}")
         return render_template('error.html.j2',
             error_type="server_error",
             error_title="Server Error",
@@ -411,10 +489,23 @@ def health():
         limit = rate_limit.core.limit
         reset_timestamp = rate_limit.core.reset.timestamp()
 
+        # D5B: Check workflow scope (best-effort)
+        has_workflow_scope = False
+        try:
+            # Try to list workflows (requires workflow scope)
+            workflows = repo.get_workflows()
+            has_workflow_scope = workflows.totalCount > 0
+        except:
+            pass
+
         return jsonify({
             "status": "healthy",
             "github": "connected",
             "repo": GH_REPO,
+            "scopes": {
+                "repo": True,  # If we got here, we have repo scope
+                "workflow": has_workflow_scope
+            },
             "rate_limit": {
                 "remaining": remaining,
                 "limit": limit,

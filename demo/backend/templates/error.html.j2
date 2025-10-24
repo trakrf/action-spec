@@ -25,6 +25,10 @@
                     <div class="text-6xl mb-4">⚠️</div>
                     {% elif error_type == 'conflict' %}
                     <div class="text-6xl mb-4">⚠️</div>
+                    {% elif error_type == 'forbidden' %}
+                    <div class="text-6xl mb-4">🔒</div>
+                    {% elif error_type == 'api_error' %}
+                    <div class="text-6xl mb-4">🔌</div>
                     {% elif error_type == 'server_error' %}
                     <div class="text-6xl mb-4">💥</div>
                     {% elif error_type == 'service_unavailable' %}
