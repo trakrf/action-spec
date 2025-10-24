@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  customer: northwind
+  environment: dev
+spec:
+  compute:
+    instance_name: web4
+    instance_type: t4g.nano
+  security:
+    waf:
+      enabled: false
