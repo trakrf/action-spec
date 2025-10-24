@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  spec-editor:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: ghcr.io/trakrf/spec-editor:latest
+    container_name: spec-editor
+    ports:
+      - "5000:5000"
+    environment:
+      - GH_TOKEN=${GH_TOKEN}
+      - GH_REPO=${GH_REPO:-trakrf/action-spec}
+      - SPECS_PATH=${SPECS_PATH:-demo/infra}
+      - WORKFLOW_BRANCH=${WORKFLOW_BRANCH:-main}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    # Uncomment for development (live code reload)
+    # volumes:
+    #   - ./backend/app.py:/app/app.py
+    #   - ./backend/templates:/app/templates
+
+  demo-app:
+    image: mendhak/http-https-echo:latest
+    container_name: demo-app
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    environment:
+      - HTTP_PORT=8080
