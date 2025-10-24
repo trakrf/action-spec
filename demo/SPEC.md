@@ -716,4 +716,58 @@ D7 (Integration)
 
 ---
 
+## Future Enhancements (Backlog)
+
+### Delete Pod Feature (Post-D7)
+**Status**: Backlog - defer until after D6 (Docker) and D7 (Scale Testing) are complete
+
+**User Story**:
+- As an operations engineer, I want to delete test/obsolete pods so that I can keep infrastructure clean and reduce costs
+
+**Implementation Approach** (Militant Confirmation):
+
+**Confirmation Flow**:
+1. User clicks "Delete Pod" button (red, warning style)
+2. Shows confirmation page with:
+   - **Big warning**: "⚠️ Are you really sure that you want to perform this destructive action?"
+   - **Impact details**:
+     - "This will destroy EC2 instance i-xxxxx"
+     - "This will delete all pod files from the repository"
+     - "This will run `terraform destroy` to remove AWS resources"
+     - "This action CANNOT be undone"
+   - **Typed confirmation**: Input field with placeholder "Type pod name to confirm"
+     - User must type exact pod name (e.g., "advworks-dev")
+     - Button disabled until exact match
+   - **Two buttons**:
+     - 🔴 "Yes, destroy my pod" (red, requires exact name match)
+     - ⚪ "No, leave it be" (gray, default/recommended)
+
+**Workflow Integration**:
+- Triggers `delete-pod.yml` GitHub Actions workflow
+- Workflow runs `terraform destroy` in pod directory
+- Waits for Terraform completion
+- Deletes pod directory and all files
+- Commits deletion to feature branch
+- Returns success/failure to Flask app
+
+**Safeguards**:
+- ✅ Typed confirmation (exact pod name)
+- ✅ Scary warning language
+- ✅ Shows what will be destroyed (EC2 instance ID)
+- ✅ Terraform destroy before file deletion
+- ✅ Optional: Restrict to dev/stg only (not prd)
+
+**Scope**:
+- New route: `/pod/<customer>/<env>/delete` (GET - confirmation page)
+- New route: `/pod/<customer>/<env>/delete` (POST - execute deletion)
+- New workflow: `.github/workflows/delete-pod.yml`
+- New template: `delete-confirm.html.j2`
+- Error handling for partial failures (Terraform fails, files remain)
+
+**Estimated Effort**: 2-3 hours
+
+**Decision Point**: Evaluate after D7 completion - only add if demo benefits from clean-up capability
+
+---
+
 **Ready to build.**
