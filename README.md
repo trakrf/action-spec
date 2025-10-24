@@ -7,6 +7,39 @@
 
 **ActionSpec** is an open-source demonstration of YAML-driven Infrastructure as Code, showcasing how specification files can drive GitHub Actions workflows for automated infrastructure deployment.
 
+## 🎯 Project Status
+
+**Demo POC (v0.1.0)**: ✅ Complete - Fully functional self-hosted deployment tool with web UI
+
+This repository contains a **complete proof-of-concept demonstration** of YAML-driven infrastructure deployment. The demo showcases end-to-end workflow from specification editing to automated AWS deployment via GitHub Actions.
+
+**Enterprise Solution (PRD.md)**: ~50% Complete - Started Here, Pivoted to POC Mid-Build
+
+**The journey:**
+1. Designed ambitious enterprise architecture (see PRD.md - serverless React + Lambda)
+2. Built foundation: security, parsing, Lambda infrastructure (~1.5 days)
+3. **Realization**: Remaining frontend/integration work would take another week+
+4. **Decision**: Validate with complete POC before finishing enterprise build
+5. **Result**: Shipped working demo (v0.1.0) that proves the entire concept
+
+**Enterprise foundation already built** (~50% complete):
+- ✅ Security framework (100%) - Pre-commit hooks, CodeQL, secrets scanning
+- ✅ Spec parsing engine (90%) - JSON Schema validation, YAML parser, error handling
+- ✅ Lambda infrastructure (100%) - SAM templates, security wrapper, API Gateway scaffold
+- ✅ Cost controls (100%) - Budget alarms, remote state, Terraform modules
+
+**Remaining for enterprise** (deferred, not blocked):
+- 🚧 GitHub PR integration - Spec applier Lambda (Phase 3.3)
+- 🚧 React frontend - Dynamic forms, WAF toggle UI (Phase 3.4)
+- 🚧 API Gateway + WAF - CloudFront, static hosting (Phase 2)
+- 🚧 Deployment automation & documentation (Phase 3.5)
+
+**Learning:** Should have validated with POC before building enterprise foundation - but the foundation work informed the POC architecture and is ready when enterprise scaling is needed.
+
+**See the demo**: The `demo/` directory contains the complete working system. See [demo/README.md](demo/README.md) for architecture and setup.
+
+---
+
 ## ⚠️ IMPORTANT DISCLAIMER
 
 This is a **PORTFOLIO DEMONSTRATION PROJECT** showcasing cloud architecture patterns.

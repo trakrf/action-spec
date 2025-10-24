@@ -136,6 +136,40 @@ def validate_instance_name(value):
 
     return value
 
+def generate_spec_yaml(customer, env, instance_name, waf_enabled):
+    """
+    Generate spec.yml content from form inputs.
+
+    Args:
+        customer: Customer name (validated)
+        env: Environment name (validated)
+        instance_name: EC2 instance name (validated)
+        waf_enabled: Boolean - whether WAF is enabled
+
+    Returns:
+        str: YAML content for spec.yml
+    """
+    spec = {
+        'metadata': {
+            'customer': customer,
+            'environment': env,
+            'version': '1.0'
+        },
+        'spec': {
+            'compute': {
+                'instance_name': instance_name,
+                'instance_type': 't4g.nano'
+            },
+            'security': {
+                'waf': {
+                    'enabled': waf_enabled
+                }
+            }
+        }
+    }
+
+    return yaml.dump(spec, default_flow_style=False, sort_keys=False)
+
 def fetch_spec(customer, env):
     """
     Fetch and parse spec.yml from GitHub for a specific pod.
@@ -355,94 +389,135 @@ def deploy():
         else:
             logger.info(f"Updating existing pod: {customer}/{env}")
 
-        # D5B: Trigger workflow_dispatch
-        workflow_file = 'deploy-pod.yml'
+        # D8: GitOps PR Workflow - Create branch, update spec.yml, create PR
+        timestamp = int(time.time())
+        branch_name = f"deploy-{customer}-{env}-{timestamp}"
+        spec_path = f"{SPECS_PATH}/{customer}/{env}/spec.yml"
 
-        # Get workflow object
+        logger.info(f"Creating deployment branch: {branch_name}")
+
         try:
-            workflow = repo.get_workflow(workflow_file)
-        except Exception as e:
-            logger.error(f"Failed to get workflow {workflow_file}: {e}")
-            return render_template('error.html.j2',
-                error_type="not_found",
-                error_title="Workflow Not Found",
-                error_message=f"GitHub workflow '{workflow_file}' not found. Check .github/workflows/ directory.",
-                show_pods=False,
-                pods=[]), 404
+            # Get base branch (main) commit SHA
+            base = repo.get_branch('main')
+            base_sha = base.commit.sha
 
-        # Prepare workflow inputs (must match workflow_dispatch inputs in deploy-pod.yml)
-        workflow_inputs = {
+            # Create new branch from main
+            repo.create_git_ref(f"refs/heads/{branch_name}", base_sha)
+            logger.info(f"✓ Branch created: {branch_name}")
+
+        except GithubException as e:
+            logger.error(f"Failed to create branch {branch_name}: {e}")
+            return render_template('error.html.j2',
+                error_type="api_error",
+                error_title="Branch Creation Failed",
+                error_message=f"Could not create deployment branch: {e.data.get('message', str(e)) if hasattr(e, 'data') else str(e)}",
+                show_pods=False,
+                pods=[]), 503
+
+        # Generate spec.yml content
+        spec_content = generate_spec_yaml(customer, env, instance_name, waf_enabled)
+        logger.debug(f"Generated spec.yml:\n{spec_content}")
+
+        # Update or create spec.yml on the new branch
+        try:
+            # Try to get existing file (for updates)
+            try:
+                file = repo.get_contents(spec_path, ref='main')
+                # File exists - update it
+                commit_message = f"deploy: Update {customer}/{env} infrastructure\n\nInstance: {instance_name}\nWAF: {'enabled' if waf_enabled else 'disabled'}"
+                repo.update_file(
+                    path=spec_path,
+                    message=commit_message,
+                    content=spec_content,
+                    sha=file.sha,
+                    branch=branch_name
+                )
+                logger.info(f"✓ Updated spec.yml on {branch_name}")
+
+            except GithubException as e:
+                if e.status == 404:
+                    # File doesn't exist - create it (new pod)
+                    commit_message = f"deploy: Create {customer}/{env} infrastructure\n\nInstance: {instance_name}\nWAF: {'enabled' if waf_enabled else 'disabled'}"
+                    repo.create_file(
+                        path=spec_path,
+                        message=commit_message,
+                        content=spec_content,
+                        branch=branch_name
+                    )
+                    logger.info(f"✓ Created spec.yml on {branch_name}")
+                else:
+                    raise  # Re-raise other GitHub errors
+
+        except GithubException as e:
+            logger.error(f"Failed to write spec.yml: {e}")
+            return render_template('error.html.j2',
+                error_type="api_error",
+                error_title="Spec Update Failed",
+                error_message=f"Could not write spec.yml: {e.data.get('message', str(e)) if hasattr(e, 'data') else str(e)}",
+                show_pods=False,
+                pods=[]), 503
+
+        # Create Pull Request
+        pr_title = f"Deploy: {customer}/{env}"
+        pr_body = f"""## 🚀 Infrastructure Deployment
+
+**Customer**: {customer}
+**Environment**: {env}
+**Instance Name**: {instance_name}
+**WAF**: {'✅ Enabled' if waf_enabled else '❌ Disabled'}
+
+---
+
+### Changes
+This PR updates the infrastructure specification for `{customer}/{env}`.
+
+### Automation
+- ✅ Terraform plan will run automatically (see comments below)
+- ✅ Merge this PR to apply changes to AWS infrastructure
+- ✅ Terraform apply runs automatically on merge
+
+### Validation
+Review the terraform plan output below before merging.
+
+---
+
+🤖 Generated via ActionSpec spec-editor
+"""
+
+        try:
+            pr = repo.create_pull(
+                title=pr_title,
+                body=pr_body,
+                head=branch_name,
+                base='main'
+            )
+            logger.info(f"✓ PR created: {pr.html_url} (#{pr.number})")
+
+        except GithubException as e:
+            logger.error(f"Failed to create PR: {e}")
+            return render_template('error.html.j2',
+                error_type="api_error",
+                error_title="Pull Request Failed",
+                error_message=f"Could not create pull request: {e.data.get('message', str(e)) if hasattr(e, 'data') else str(e)}",
+                show_pods=False,
+                pods=[]), 503
+
+        # Success - return PR details
+        deployment_details = {
             'customer': customer,
             'environment': env,
             'instance_name': instance_name,
-            'waf_enabled': waf_enabled  # Boolean, not string
+            'waf_enabled': waf_enabled
         }
 
-        logger.info(f"Triggering workflow_dispatch for {customer}/{env} with inputs: {workflow_inputs}")
-
-        # Trigger workflow dispatch on configured branch
-        try:
-            workflow.create_dispatch(
-                ref=WORKFLOW_BRANCH,
-                inputs=workflow_inputs
-            )
-        except GithubException as e:
-            logger.error(f"workflow_dispatch failed: {e.status} - {e.data}")
-
-            # Handle specific GitHub API errors
-            if e.status == 403:
-                return render_template('error.html.j2',
-                    error_type="forbidden",
-                    error_title="Permission Denied",
-                    error_message="GitHub token lacks 'workflow' scope. Update GH_TOKEN with workflow permissions.",
-                    show_pods=False,
-                    pods=[]), 403
-            elif e.status == 404:
-                return render_template('error.html.j2',
-                    error_type="not_found",
-                    error_title="Workflow Not Found",
-                    error_message=f"Workflow '{workflow_file}' or branch '{WORKFLOW_BRANCH}' not found.",
-                    show_pods=False,
-                    pods=[]), 404
-            elif e.status == 422:
-                return render_template('error.html.j2',
-                    error_type="validation",
-                    error_title="Invalid Workflow Inputs",
-                    error_message=f"Workflow rejected inputs: {e.data.get('message', 'Unknown error')}",
-                    show_pods=False,
-                    pods=[]), 422
-            else:
-                raise  # Re-raise for generic handler
-
-        # If we got here, dispatch succeeded (no exception raised)
-        logger.info(f"workflow_dispatch succeeded for {customer}/{env}")
-
-        # D5B: Get latest workflow run URL (best-effort)
-        action_url = None
-        try:
-            # Wait briefly for GitHub to create the run
-            time.sleep(2)
-
-            runs = workflow.get_runs(branch=WORKFLOW_BRANCH)
-            logger.info(f"Retrieved {runs.totalCount} workflow runs")
-            if runs.totalCount > 0:
-                latest_run = runs[0]
-                action_url = latest_run.html_url
-                logger.info(f"Latest workflow run: {action_url}")
-            else:
-                logger.warning("No workflow runs found after 2 second delay - using fallback link")
-        except Exception as e:
-            logger.warning(f"Could not retrieve workflow run URL: {e}")
-            # Non-fatal - continue without URL
-
-        # Success
         return render_template('success.html.j2',
             mode=mode,
             customer=customer,
             env=env,
-            deployment_inputs=workflow_inputs,
-            preview_mode=False,  # D5B: actual deployment
-            action_url=action_url)
+            deployment_inputs=deployment_details,
+            preview_mode=False,
+            pr_url=pr.html_url,
+            pr_number=pr.number)
 
     except ValueError as e:
         # Validation error

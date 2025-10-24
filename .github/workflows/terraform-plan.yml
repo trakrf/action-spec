@@ -1,0 +1,135 @@
+name: Terraform Plan
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'demo/infra/**/spec.yml'
+
+env:
+  AWS_REGION: us-east-1
+  TF_VERSION: 1.6.0
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write  # For AWS OIDC
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed spec files
+        id: detect
+        run: |
+          # Find spec.yml files that changed in this PR
+          CHANGED_FILES=$(git diff --name-only origin/main..HEAD | grep 'demo/infra/.*/.*spec\.yml' || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No spec.yml files changed"
+            exit 0
+          fi
+
+          # Parse first changed spec (multi-spec not yet supported)
+          SPEC_PATH=$(echo "$CHANGED_FILES" | head -1)
+          echo "spec_path=$SPEC_PATH" >> $GITHUB_OUTPUT
+
+          # Extract customer and env from path
+          CUSTOMER=$(echo "$SPEC_PATH" | cut -d'/' -f3)
+          ENV=$(echo "$SPEC_PATH" | cut -d'/' -f4)
+
+          echo "customer=$CUSTOMER" >> $GITHUB_OUTPUT
+          echo "env=$ENV" >> $GITHUB_OUTPUT
+          echo "tf_dir=demo/infra/$CUSTOMER/$ENV" >> $GITHUB_OUTPUT
+
+          echo "📋 Detected: $CUSTOMER/$ENV"
+          echo "   Spec: $SPEC_PATH"
+          echo "   TF Dir: demo/infra/$CUSTOMER/$ENV"
+
+      - name: Setup Terraform
+        if: steps.detect.outputs.spec_path != ''
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS Credentials
+        if: steps.detect.outputs.spec_path != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        if: steps.detect.outputs.spec_path != ''
+        working-directory: ${{ steps.detect.outputs.tf_dir }}
+        run: terraform init
+
+      - name: Terraform Validate
+        if: steps.detect.outputs.spec_path != ''
+        working-directory: ${{ steps.detect.outputs.tf_dir }}
+        run: terraform validate
+
+      - name: Terraform Plan
+        if: steps.detect.outputs.spec_path != ''
+        id: plan
+        working-directory: ${{ steps.detect.outputs.tf_dir }}
+        run: |
+          terraform plan -no-color -out=tfplan 2>&1 | tee plan.txt
+          echo "exitcode=$?" >> $GITHUB_OUTPUT
+
+      - name: Comment PR with Plan
+        if: steps.detect.outputs.spec_path != ''
+        uses: actions/github-script@v7
+        env:
+          PLAN_OUTPUT: ${{ steps.plan.outputs.stdout }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const customer = '${{ steps.detect.outputs.customer }}';
+            const env = '${{ steps.detect.outputs.env }}';
+            const tfDir = '${{ steps.detect.outputs.tf_dir }}';
+
+            // Read plan output
+            let planOutput = '';
+            try {
+              planOutput = fs.readFileSync(`${tfDir}/plan.txt`, 'utf8');
+            } catch (e) {
+              planOutput = 'Could not read plan output';
+            }
+
+            // Truncate if too long (GitHub comment limit)
+            if (planOutput.length > 60000) {
+              planOutput = planOutput.substring(0, 60000) + '\n\n... (truncated)';
+            }
+
+            const output = `## 🔍 Terraform Plan: ${customer}/${env}
+
+            <details>
+            <summary>📋 Show Plan Output</summary>
+
+            \`\`\`terraform
+            ${planOutput}
+            \`\`\`
+
+            </details>
+
+            ---
+
+            **Directory**: \`${tfDir}\`
+            **Workflow**: [\`terraform-plan.yml\`](https://github.com/${{ github.repository }}/blob/main/.github/workflows/terraform-plan.yml)
+
+            ✅ Review the plan above before merging. Terraform apply will run automatically on merge.
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
