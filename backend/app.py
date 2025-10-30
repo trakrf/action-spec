@@ -253,6 +253,10 @@ def list_all_pods():
     set_cached(cache_key, pods)
     return pods
 
+# Register API blueprint
+from api import api_blueprint
+app.register_blueprint(api_blueprint)
+
 @app.route('/')
 def index():
     """Home page: list all pods grouped by customer"""

@@ -8,7 +8,7 @@ The Flask application will expose REST API endpoints that provide the same data 
 
 ## User Story
 As a **frontend developer migrating to Vue.js**
-I want **REST API endpoints that provide blueprint, AWS resource, and deployment data**
+I want **REST API endpoints that provide pod listing, blueprint YAML, and deployment data**
 So that **I can build a Vue frontend without modifying backend logic or breaking existing Jinja functionality**
 
 ## Context
@@ -36,46 +36,32 @@ So that **I can build a Vue frontend without modifying backend logic or breaking
 
 ### API Endpoints
 
-#### 1. `GET /api/blueprint`
-- Fetch blueprint.yml from GitHub repository
-- Return raw YAML content or parsed JSON structure
-- Handle GitHub API authentication securely
-- Error handling: 404 if file not found, 401 if auth fails, 500 for GitHub API errors
+Based on the current Flask application which uses GitHub API and YAML parsing (NO AWS integration exists):
 
-#### 2. `GET /api/config`
-- Return parsed YAML structure from blueprint.yml
-- Validate YAML structure before returning
-- Error handling: 400 if YAML is malformed, 404 if file missing
+#### 1. `GET /api/pods`
+- List all pods (customer/environment combinations) discovered from GitHub repository structure
+- Returns: Array of `{customer: string, env: string}` objects
+- Uses existing `list_all_pods()` function logic
+- Error handling: 500 for GitHub API errors
 
-#### 3. `GET /api/aws/subnets`
-- List EC2 subnets with VPC context
-- Include: subnet ID, CIDR, VPC ID, availability zone, tags
-- Consider pagination for large AWS accounts
-- Error handling: 401 for credential issues, 500 for AWS API errors
+#### 2. `GET /api/pod/<customer>/<env>`
+- Fetch spec.yml for a specific pod from GitHub
+- Returns: Parsed YAML structure with blueprint configuration
+- Uses existing `fetch_spec(customer, env)` function logic
+- Error handling: 404 if pod not found, 500 for GitHub API errors
 
-#### 4. `GET /api/aws/amis`
-- List AMIs sorted by creation date (newest first)
-- Filter criteria: owner, name pattern (query params)
-- Include: AMI ID, name, creation date, state
-- Error handling: Similar to subnets endpoint
+#### 3. `POST /api/pod`
+- Create or update a pod specification
+- Request body: `{customer: string, env: string, spec: object, commit_message?: string}`
+- Creates GitHub branch and pull request using existing deployment logic
+- Response: `{branch: string, pr_url: string}`
+- Error handling: 400 for invalid input, 500 for GitHub API errors
 
-#### 5. `GET /api/aws/snapshots`
-- List EBS snapshots with status
-- Include: snapshot ID, volume ID, state, progress, start time
-- Consider pagination
-- Error handling: Similar to subnets endpoint
-
-#### 6. `POST /api/validate`
-- Validate that CIDRs and AMIs exist in AWS
-- Request body: `{"cidrs": [...], "ami_ids": [...]}`
-- Response: Validation results with specific errors per resource
-- Error handling: 400 for invalid input format, detailed validation errors in 200 response
-
-#### 7. `POST /api/deploy`
-- Trigger GitHub Actions workflow_dispatch
-- Request body: Deployment parameters
-- Response: Workflow run ID or confirmation
-- Error handling: 401 for auth, 400 for invalid params, 500 for GitHub API errors
+#### 4. `GET /api/health`
+- Health check endpoint (already exists but may need JSON response)
+- Returns: `{status: "ok", github_connected: boolean}`
+- Verify GitHub API connectivity
+- Error handling: 500 if GitHub unreachable
 
 ### Cross-Cutting Requirements
 
@@ -100,52 +86,55 @@ So that **I can build a Vue frontend without modifying backend logic or breaking
   - 500: Server error (AWS/GitHub API failures)
 
 #### Security Considerations
-- AWS credentials via boto3 default credential chain
-- GitHub token from environment variable, never hardcoded
+- GitHub token from environment variable (GH_TOKEN), never hardcoded
 - Input validation for all POST endpoints
 - No sensitive data in error messages
+- YAML validation to prevent injection attacks
 
 #### Performance
-- Consider caching for AWS resource queries (AMIs change infrequently)
-- Handle AWS pagination to avoid timeouts on large datasets
-- Async operations for long-running tasks (deployment)
+- Consider caching for pod listing (GitHub API rate limits)
+- GitHub PR creation is async by nature (returns immediately)
+- YAML parsing should be fast for typical spec sizes
 
 ## Implementation Notes
 
 ### Code Organization
 ```python
-# Suggested structure
+# Option 1: Minimal - Add API routes directly to backend/app.py
+# Since we only have 4 endpoints and they reuse existing functions
+
+# Option 2: Organized - Extract to blueprint (recommended for maintainability)
 /backend
   /api
     __init__.py          # API blueprint registration
     /routes
-      blueprint.py       # Blueprint/config endpoints
-      aws.py            # AWS resource endpoints
-      deploy.py         # Deployment endpoint
-    /services
-      github_service.py  # GitHub API client
-      aws_service.py     # AWS API client
-      validator.py       # Validation logic
+      pods.py            # Pod listing and CRUD endpoints
+      health.py          # Health check endpoint
 ```
 
-### AWS Service Pattern
+### API Implementation Pattern
 ```python
-# Example pattern for AWS endpoints
-def get_subnets():
+# Example: Reuse existing logic for API endpoints
+from flask import Blueprint, jsonify, request
+
+api = Blueprint('api', __name__, url_prefix='/api')
+
+@api.route('/pods', methods=['GET'])
+def get_pods():
     try:
-        ec2 = boto3.client('ec2')
-        response = ec2.describe_subnets()
-        subnets = []
-        for subnet in response['Subnets']:
-            subnets.append({
-                'id': subnet['SubnetId'],
-                'cidr': subnet['CidrBlock'],
-                'vpc_id': subnet['VpcId'],
-                'az': subnet['AvailabilityZone'],
-                'tags': subnet.get('Tags', [])
-            })
-        return jsonify(subnets), 200
-    except ClientError as e:
+        pods = list_all_pods()  # Reuse existing function
+        return jsonify(pods), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@api.route('/pod/<customer>/<env>', methods=['GET'])
+def get_pod(customer, env):
+    try:
+        spec = fetch_spec(customer, env)  # Reuse existing function
+        if spec is None:
+            return jsonify({'error': 'Pod not found'}), 404
+        return jsonify(spec), 200
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 ```
 
@@ -160,74 +149,78 @@ if os.getenv('FLASK_ENV') == 'development':
 ## Validation Criteria
 
 ### Functional Tests
-- [ ] `/api/blueprint` returns valid blueprint.yml content
-- [ ] `/api/config` returns correctly parsed YAML structure
-- [ ] `/api/aws/subnets` returns subnets with VPC context
-- [ ] `/api/aws/amis` returns AMIs sorted by date (newest first)
-- [ ] `/api/aws/snapshots` returns snapshots with status
-- [ ] `/api/validate` correctly identifies invalid CIDRs/AMIs
-- [ ] `/api/deploy` triggers workflow_dispatch successfully
+- [ ] `GET /api/pods` returns array of all customer/environment combinations
+- [ ] `GET /api/pod/<customer>/<env>` returns parsed spec.yml for valid pod
+- [ ] `POST /api/pod` creates GitHub branch and PR successfully
+- [ ] `GET /api/health` returns JSON status with GitHub connectivity check
 - [ ] All endpoints return proper JSON responses
 
 ### Error Handling Tests
-- [ ] Endpoints return appropriate error codes for missing resources
-- [ ] AWS credential failures are handled gracefully
-- [ ] GitHub API failures are handled gracefully
-- [ ] Invalid input is rejected with 400 status
-- [ ] Error responses include helpful messages
+- [ ] `GET /api/pod/<customer>/<env>` returns 404 for non-existent pod
+- [ ] GitHub API failures are handled gracefully with 500 status
+- [ ] Invalid POST input is rejected with 400 status
+- [ ] Error responses include helpful messages in consistent format
 
 ### Compatibility Tests
-- [ ] All existing Jinja routes still work
+- [ ] All existing Jinja routes still work (`/`, `/pod/<c>/<e>`, `/pod/new`, `/deploy`)
 - [ ] No breaking changes to current functionality
 - [ ] Jinja routes can coexist with API routes
+- [ ] Existing functions (fetch_spec, list_all_pods, etc.) work unchanged
 
 ### Security Tests
-- [ ] CORS only enabled for allowed origins
-- [ ] No sensitive data in error messages
+- [ ] CORS only enabled for allowed origins (localhost in dev)
+- [ ] No sensitive data (GH_TOKEN) in error messages
 - [ ] GitHub token not exposed in responses
-- [ ] Input validation prevents injection attacks
+- [ ] YAML input validation prevents injection attacks
+- [ ] POST endpoint validates customer/env naming patterns
 
 ### Performance Tests
-- [ ] AWS queries complete within reasonable time (<5s)
-- [ ] Large result sets don't cause timeouts
+- [ ] Pod listing completes within reasonable time (<2s typical)
+- [ ] GitHub API rate limits considered (caching strategy)
 - [ ] Concurrent requests handled correctly
 
 ### Integration Tests
 - [ ] Test with curl/Postman (manual verification)
-- [ ] Test from Vue dev server with CORS
+- [ ] Test from Vue dev server with CORS enabled
 - [ ] Test error scenarios end-to-end
+- [ ] Verify PR creation workflow from API
 
 ## Success Criteria
 
 **This feature is complete when:**
-1. All 7 API endpoints are implemented and tested
-2. Vue.js frontend can fetch all necessary data via API
-3. Existing Jinja functionality is unaffected
-4. CORS works for local development
-5. Error handling is consistent and helpful
-6. Documentation exists for each endpoint
+1. All 4 API endpoints are implemented and tested
+2. Vue.js frontend can fetch pod data and create/update pods via API
+3. Existing Jinja functionality is unaffected (backward compatibility verified)
+4. CORS works for local development (Vue dev server can connect)
+5. Error handling is consistent and helpful (JSON format, proper status codes)
+6. Manual API testing completed with curl/Postman
 
 ## Future Considerations
 
 **After this PR:**
 - Build Vue.js frontend consuming these APIs (Phase 3b)
-- Add API authentication/authorization if needed
-- Implement caching layer for AWS queries
-- Deprecate Jinja routes once Vue is complete
-- Consider API versioning strategy (`/api/v1/...`)
+- Add API authentication/authorization if needed (currently relies on network security)
+- Implement caching layer for pod listing (GitHub API rate limits)
+- Deprecate Jinja routes once Vue frontend is complete
+- Consider API versioning strategy (`/api/v1/...`) before public release
+- **Potential future AWS integration** (if needed - not in current scope)
 
 ## Questions to Resolve
 
-1. **Data format**: Should `/api/blueprint` return raw YAML or parsed JSON?
-2. **Pagination**: Do we need pagination for AWS endpoints now, or acceptable to implement later?
-3. **Authentication**: Do API endpoints need authentication, or rely on network security?
-4. **Rate limiting**: Should we add rate limiting to prevent abuse?
-5. **Async deployment**: Should `/api/deploy` be synchronous or return immediately with job ID?
+1. **Pod listing format**: Should `/api/pods` return just `{customer, env}` or include additional metadata?
+2. **Authentication**: Do API endpoints need authentication, or rely on network security? (Current app has no auth)
+3. **Rate limiting**: Should we add rate limiting to prevent abuse?
+4. **Caching**: Should we cache pod listing results, and if so, for how long?
+5. **POST response**: Should `/api/pod` wait for PR creation or return immediately?
 
 ## References
 
 - Linear Issue: [D2A-27](https://linear.app/trakrf/issue/D2A-27/pr-3a-add-flask-api-endpoints-keep-jinja)
 - PR Branch: `feature/flask-api-endpoints`
-- Estimate: 30 minutes (from Linear)
+- Estimate: 15-20 minutes (revised down - only 4 simple endpoints reusing existing functions)
 - Priority: High
 - Project: MediaCo spec editor phase 2
+
+## Revision History
+
+- **2025-10-30**: Rescoped from 7 endpoints (including AWS integration) to 4 endpoints matching actual application functionality (GitHub API + YAML only). Removed all AWS-related requirements that don't exist in current codebase.
