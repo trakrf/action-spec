@@ -1,0 +1,11 @@
+metadata:
+  customer: advworks
+  environment: stg
+  version: '1.0'
+spec:
+  compute:
+    instance_name: web2
+    instance_type: t4g.nano
+  security:
+    waf:
+      enabled: true
