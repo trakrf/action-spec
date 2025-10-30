@@ -5,7 +5,7 @@ locals {
 
 # Call pod module with spec-driven configuration
 module "pod" {
-  source = "../../../tfmodules/pod"
+  source = "../../modules/pod"
 
   customer      = local.spec.metadata.customer
   environment   = local.spec.metadata.environment

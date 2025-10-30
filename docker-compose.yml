@@ -3,7 +3,7 @@ version: '3.8'
 services:
   spec-editor:
     build:
-      context: ./backend
+      context: ./src/backend
       dockerfile: Dockerfile
     image: ghcr.io/trakrf/spec-editor:latest
     container_name: spec-editor
@@ -12,7 +12,7 @@ services:
     environment:
       - GH_TOKEN=${GH_TOKEN}
       - GH_REPO=${GH_REPO:-trakrf/action-spec}
-      - SPECS_PATH=${SPECS_PATH:-demo/infra}
+      - SPECS_PATH=${SPECS_PATH:-infra}
       - WORKFLOW_BRANCH=${WORKFLOW_BRANCH:-main}
     restart: unless-stopped
     healthcheck:
@@ -23,8 +23,8 @@ services:
       start_period: 10s
     # Uncomment for development (live code reload)
     # volumes:
-    #   - ./backend/app.py:/app/app.py
-    #   - ./backend/templates:/app/templates
+    #   - ./src/backend/app.py:/app/app.py
+    #   - ./src/backend/templates:/app/templates
 
   demo-app:
     image: mendhak/http-https-echo:latest

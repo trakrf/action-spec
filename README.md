@@ -36,7 +36,7 @@ This repository contains a **complete proof-of-concept demonstration** of YAML-d
 
 **Learning:** Should have validated with POC before building enterprise foundation - but the foundation work informed the POC architecture and is ready when enterprise scaling is needed.
 
-**See the demo**: The `demo/` directory contains the complete working system. See [demo/README.md](demo/README.md) for architecture and setup.
+**See the implementation**: The `src/` directory contains the complete working system. See [src/README.md](src/README.md) for architecture and setup.
 
 ---
 
