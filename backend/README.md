@@ -263,7 +263,7 @@ sequenceDiagram
 
 ## REST API Endpoints
 
-The Flask application exposes REST API endpoints for programmatic access to pod management. These endpoints enable frontend decoupling and headless automation.
+The Flask application exposes REST API endpoints for programmatic access to pod specification management. These endpoints enable frontend decoupling and headless automation.
 
 ### Available Endpoints
 
