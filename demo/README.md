@@ -395,7 +395,7 @@ This is a proof-of-concept demo with intentional limitations:
 ## Additional Resources
 
 - **Parent Project**: See `../README.md` for overall project goals and architecture
-- **Enterprise PRD**: See `../PRD.md` for planned enterprise features
+- **Enterprise PRD**: See `../overengineered/PRD.md` for planned enterprise features (archived)
 - **Terraform Docs**: [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
 - **GitHub Actions**: [Workflow Syntax](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions)
 - **AWS WAF**: [WAF Developer Guide](https://docs.aws.amazon.com/waf/latest/developerguide/)

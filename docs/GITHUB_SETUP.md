@@ -252,7 +252,7 @@ aws iam attach-role-policy \
 
 **Current**: Manual SSM parameter creation via AWS CLI/Console
 
-**Future** (tracked in PRD.md):
+**Future** (tracked in overengineered/PRD.md):
 - Automate SSM parameter creation via Terraform
 - Read token from `terraform.tfvars` or environment variable
 - Follow 12-factor app principles (config from environment)

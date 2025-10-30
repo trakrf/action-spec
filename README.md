@@ -13,10 +13,10 @@
 
 This repository contains a **complete proof-of-concept demonstration** of YAML-driven infrastructure deployment. The demo showcases end-to-end workflow from specification editing to automated AWS deployment via GitHub Actions.
 
-**Enterprise Solution (PRD.md)**: ~50% Complete - Started Here, Pivoted to POC Mid-Build
+**Enterprise Solution (overengineered/PRD.md)**: ~50% Complete - Started Here, Pivoted to POC Mid-Build
 
 **The journey:**
-1. Designed ambitious enterprise architecture (see PRD.md - serverless React + Lambda)
+1. Designed ambitious enterprise architecture (see overengineered/PRD.md - serverless React + Lambda)
 2. Built foundation: security, parsing, Lambda infrastructure (~1.5 days)
 3. **Realization**: Remaining frontend/integration work would take another week+
 4. **Decision**: Validate with complete POC before finishing enterprise build
@@ -110,7 +110,7 @@ See [SECURITY.md](.github/SECURITY.md) for reporting security issues.
 
 ## 📖 Documentation
 
-- [PRD.md](PRD.md) - Product Requirements and architecture
+- [overengineered/PRD.md](overengineered/PRD.md) - Original product requirements (archived)
 - [CONTRIBUTING.md](CONTRIBUTING.md) - How to contribute safely
 - [SECURITY.md](.github/SECURITY.md) - Security policies
 

@@ -145,7 +145,7 @@ To be listed:
 
 ## References
 
-See PRD.md for additional security considerations and cost protection measures.
+See overengineered/PRD.md for additional security considerations and cost protection measures (archived).
 
 ---
 
