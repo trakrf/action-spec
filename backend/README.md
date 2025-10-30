@@ -1,10 +1,10 @@
-# ActionSpec Demo - Infrastructure Deployment via Spec Editor
+# ActionSpec Backend - Infrastructure Deployment via Spec Editor
 
-A proof-of-concept demonstration of YAML-driven infrastructure deployment with a web-based specification editor. This demo showcases how declarative specifications can drive automated AWS infrastructure deployment through GitHub Actions workflows.
+The main implementation of YAML-driven infrastructure deployment with a web-based specification editor. This backend provides declarative infrastructure specifications driving automated AWS deployment through GitHub Actions workflows.
 
 **Key Technologies**: Flask (Python), Terraform, AWS (ALB, WAF, EC2), Docker, GitHub Actions
 
-## What This Demo Shows
+## Features
 
 - **YAML specifications drive infrastructure deployment** - Edit specs via web UI, trigger deployments automatically
 - **Web UI for managing pod configurations** - Form-based editor for infrastructure specifications
@@ -36,11 +36,11 @@ graph TB
     subgraph "GitHub"
         Repo[action-spec Repository]
         Actions[GitHub Actions<br/>deploy-pod.yml]
-        Specs[Pod Specs<br/>demo/infra/customer/env/]
+        Specs[Pod Specs<br/>infra/customer/env/]
     end
 
     subgraph "Infrastructure as Code"
-        TF[Terraform Modules<br/>tfmodules/pod/]
+        TF[Terraform Modules<br/>infra/modules/pod/]
     end
 
     User -->|HTTP Request| WAF
@@ -100,7 +100,7 @@ graph TB
 1. Clone the repository:
 ```bash
 git clone https://github.com/yourusername/action-spec.git
-cd action-spec/demo
+cd action-spec
 ```
 
 2. Create `.env` file with required variables:
@@ -127,7 +127,7 @@ docker compose up
 
 ### Local Development Tips
 
-- Spec-editor mounts `demo/infra/` for live spec editing
+- Spec-editor mounts `infra/` for live spec editing
 - Changes to Flask code require container restart
 - Logs visible via `docker compose logs -f spec-editor`
 
@@ -135,10 +135,10 @@ docker compose up
 
 ### Terraform Infrastructure Overview
 
-The demo uses a "pod" infrastructure pattern where each pod is a self-contained deployment unit:
+The implementation uses a "pod" infrastructure pattern where each pod is a self-contained deployment unit:
 
 ```
-demo/infra/
+infra/
 └── {customer}/          # Customer/organization name (e.g., advworks)
     └── {environment}/   # Environment (dev, staging, prod)
         ├── spec.yml     # Pod specification (what to deploy)
@@ -183,7 +183,7 @@ The `deploy-pod.yml` workflow:
 **Trigger from UI**: Click "Deploy Changes" button in spec-editor
 **Trigger manually**: GitHub UI → Actions tab → deploy-pod → Run workflow
 
-## Demo Flow
+## Deployment Flow
 
 ### Deployment Sequence
 
@@ -238,30 +238,30 @@ sequenceDiagram
 ## Components
 
 **Backend Application**
-- `demo/backend/` - Flask spec-editor application
+- `backend/` - Flask spec-editor application
   - `app.py` - Main application entry point
   - `templates/` - Jinja2 HTML templates
   - `static/` - CSS and client-side assets
 
 **Infrastructure Specifications**
-- `demo/infra/` - Pod specifications organized by customer/environment
+- `infra/` - Pod specifications organized by customer/environment
   - Currently contains: advworks/dev, contoso/staging, fabrikam/prod
 
 **Terraform Modules**
-- `demo/tfmodules/pod/` - Reusable Terraform module for pod deployment
+- `infra/modules/pod/` - Reusable Terraform module for pod deployment
   - Manages EC2, ALB, WAF, security groups, IAM roles
 
 **Development Environment**
-- `demo/docker-compose.yml` - Local development setup
-- `demo/Dockerfile` - Container image for spec-editor
-- `demo/justfile` - Task runner with useful commands
+- `docker-compose.yml` - Local development setup (at root)
+- `backend/Dockerfile` - Container image for spec-editor
+- `justfile` - Task runner with useful commands (at root)
 
 **GitHub Workflows**
 - `.github/workflows/deploy-pod.yml` - Pod deployment automation
 - `.github/workflows/terraform-plan.yml` - Preview infrastructure changes
 - `.github/workflows/terraform-apply.yml` - Apply infrastructure changes
 
-## Testing the Demo
+## Testing the Application
 
 ### WAF Testing Commands
 
@@ -322,15 +322,15 @@ curl -X POST \
   -d '{"ref":"main","inputs":{"customer":"advworks","environment":"dev"}}'
 ```
 
-## Limitations (Demo Scope)
+## Current Limitations
 
-This is a proof-of-concept demo with intentional limitations:
+This implementation has intentional scope limitations:
 
 **Security Constraints**:
-- ❌ No user authentication (single-tenant demo)
+- ❌ No user authentication (single-tenant implementation)
 - ❌ GitHub token stored in environment (not secrets manager)
 - ❌ No HTTPS in local development
-- ⚠️ Wide-open security groups (demo only - not production ready)
+- ⚠️ Wide-open security groups (not production ready)
 
 **Functionality Constraints**:
 - ❌ No delete functionality (safety measure - creates and updates only)
@@ -350,7 +350,7 @@ This is a proof-of-concept demo with intentional limitations:
 - No config drift detection
 
 **Production Readiness**:
-- This is a demo POC, not production-grade infrastructure
+- This is a portfolio project, not production-grade infrastructure
 - See parent `README.md` for enterprise solution roadmap
 - Missing: monitoring, alerting, disaster recovery, compliance controls
 
@@ -358,9 +358,9 @@ This is a proof-of-concept demo with intentional limitations:
 
 **For Local Development**:
 1. Explore the spec-editor UI at http://localhost:5000
-2. Review pod specifications in `demo/infra/`
+2. Review pod specifications in `infra/`
 3. Make changes and observe workflow triggers
-4. Review Terraform modules in `demo/tfmodules/`
+4. Review Terraform modules in `infra/modules/`
 
 **For AWS Deployment**:
 1. Configure AWS credentials in GitHub Secrets
@@ -402,6 +402,6 @@ This is a proof-of-concept demo with intentional limitations:
 
 ---
 
-**Version**: v0.1.0 (Alpha POC)
-**Maintained by**: ActionSpec Demo Team
+**Version**: v0.1.0 (Alpha)
+**Maintained by**: ActionSpec Team
 **License**: See parent repository LICENSE file

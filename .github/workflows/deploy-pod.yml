@@ -40,8 +40,8 @@ jobs:
       ENVIRONMENT: ${{ inputs.environment }}
       INSTANCE_NAME: ${{ inputs.instance_name }}
       WAF_ENABLED: ${{ inputs.waf_enabled }}
-      POD_PATH: demo/infra/${{ inputs.customer }}/${{ inputs.environment }}
-      SPEC_FILE: demo/infra/${{ inputs.customer }}/${{ inputs.environment }}/spec.yml
+      POD_PATH: infra/${{ inputs.customer }}/${{ inputs.environment }}
+      SPEC_FILE: infra/${{ inputs.customer }}/${{ inputs.environment }}/spec.yml
 
     steps:
       - name: Checkout code
@@ -107,8 +107,8 @@ jobs:
                   }
               }
 
-              # Copy and template Terraform files from template (demo/infra/advworks/dev)
-              template_dir = 'demo/infra/advworks/dev'
+              # Copy and template Terraform files from template (infra/advworks/dev)
+              template_dir = 'infra/advworks/dev'
               tf_files = ['main.tf', 'providers.tf', 'variables.tf']
 
               # Copy non-templated files as-is

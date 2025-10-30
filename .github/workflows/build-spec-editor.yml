@@ -4,8 +4,8 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'demo/backend/**'
-      - 'demo/docker-compose.yml'
+      - 'backend/**'
+      - 'docker-compose.yml'
       - '.github/workflows/build-spec-editor.yml'
 
 env:
@@ -42,7 +42,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./demo/backend
+          context: ./backend
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

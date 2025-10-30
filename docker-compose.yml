@@ -12,7 +12,7 @@ services:
     environment:
       - GH_TOKEN=${GH_TOKEN}
       - GH_REPO=${GH_REPO:-trakrf/action-spec}
-      - SPECS_PATH=${SPECS_PATH:-demo/infra}
+      - SPECS_PATH=${SPECS_PATH:-infra}
       - WORKFLOW_BRANCH=${WORKFLOW_BRANCH:-main}
     restart: unless-stopped
     healthcheck:
