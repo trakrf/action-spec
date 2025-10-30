@@ -668,7 +668,8 @@ def health():
 
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        return jsonify({"status": "unhealthy", "error": str(e)}), 503
+        # Don't expose exception details to external users
+        return jsonify({"status": "unhealthy", "error": "Service unavailable"}), 503
 
 
 @app.errorhandler(404)
@@ -745,14 +746,34 @@ def serve_spa(path):
     if path.startswith("api/"):
         abort(404)
 
+    # Security: Validate path to prevent directory traversal
+    if ".." in path or path.startswith("/"):
+        abort(404)
+
     # If path points to a static file, serve it
-    static_file = os.path.join(app.static_folder, path)
-    if os.path.exists(static_file) and os.path.isfile(static_file):
-        return app.send_static_file(path)
+    # send_static_file safely handles path resolution within static_folder
+    try:
+        static_file = os.path.join(app.static_folder, path)
+        # Ensure resolved path is within static folder (prevent traversal)
+        static_folder_abs = os.path.abspath(app.static_folder)
+        static_file_abs = os.path.abspath(static_file)
+        if not static_file_abs.startswith(static_folder_abs):
+            abort(404)
+
+        if os.path.exists(static_file) and os.path.isfile(static_file):
+            return app.send_static_file(path)
+    except (ValueError, OSError):
+        # Invalid path, fall through to SPA fallback
+        pass
 
     # Otherwise, serve index.html (SPA fallback)
     return app.send_static_file("index.html")
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    # Only enable debug mode if explicitly set via environment variable
+    # Never enable in production
+    debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
+    host = os.environ.get("FLASK_HOST", "0.0.0.0")  # 0.0.0.0 = all interfaces
+    port = int(os.environ.get("FLASK_PORT", "5000"))
+    app.run(debug=debug_mode, host=host, port=port)
