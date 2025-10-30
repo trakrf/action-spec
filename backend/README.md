@@ -261,6 +261,153 @@ sequenceDiagram
 - `.github/workflows/terraform-plan.yml` - Preview infrastructure changes
 - `.github/workflows/terraform-apply.yml` - Apply infrastructure changes
 
+## REST API Endpoints
+
+The Flask application exposes REST API endpoints for programmatic access to pod management. These endpoints enable frontend decoupling and headless automation.
+
+### Available Endpoints
+
+#### `GET /api/pods`
+List all pods discovered from GitHub repository structure.
+
+**Response:**
+```json
+[
+  {"customer": "acme", "env": "dev"},
+  {"customer": "acme", "env": "prod"}
+]
+```
+
+**Example:**
+```bash
+curl http://localhost:5000/api/pods
+```
+
+#### `GET /api/pod/<customer>/<env>`
+Fetch spec.yml for a specific pod.
+
+**Parameters:**
+- `customer` - Customer name (alphanumeric, hyphens, underscores)
+- `env` - Environment name (dev, stg, prd)
+
+**Response:**
+```json
+{
+  "metadata": {
+    "customer": "acme",
+    "environment": "dev",
+    "version": "1.0"
+  },
+  "spec": {
+    "compute": {
+      "instance_name": "acme-dev-web",
+      "instance_type": "t4g.nano"
+    },
+    "security": {
+      "waf": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+**Error Responses:**
+- `400` - Invalid customer/env format
+- `404` - Pod not found
+- `500` - GitHub API error
+
+**Example:**
+```bash
+curl http://localhost:5000/api/pod/acme/dev
+```
+
+#### `POST /api/pod`
+Create or update a pod specification.
+
+**Request Body:**
+```json
+{
+  "customer": "acme",
+  "env": "dev",
+  "spec": {
+    "instance_name": "acme-dev-web",
+    "waf_enabled": true
+  },
+  "commit_message": "Deploy acme dev environment (optional)"
+}
+```
+
+**Response:**
+```json
+{
+  "branch": "deploy-acme-dev-1234567890",
+  "pr_url": "https://github.com/owner/repo/pull/123",
+  "pr_number": 123
+}
+```
+
+**Error Responses:**
+- `400` - Validation error (invalid input)
+- `500` - GitHub API error (branch/PR creation failed)
+
+**Example:**
+```bash
+curl -X POST http://localhost:5000/api/pod \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customer": "acme",
+    "env": "dev",
+    "spec": {
+      "instance_name": "acme-dev-web",
+      "waf_enabled": true
+    }
+  }'
+```
+
+#### `GET /health`
+Health check endpoint with GitHub connectivity status.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "github": "connected",
+  "repo": "owner/repo",
+  "scopes": {
+    "repo": true,
+    "workflow": true
+  },
+  "rate_limit": {
+    "remaining": 4999,
+    "limit": 5000,
+    "reset_at": 1234567890
+  }
+}
+```
+
+**Example:**
+```bash
+curl http://localhost:5000/health
+```
+
+### Error Response Format
+
+All API endpoints return errors in consistent JSON format:
+
+```json
+{
+  "error": "Human-readable error message",
+  "details": {
+    "additional": "context"
+  }
+}
+```
+
+### CORS Configuration
+
+CORS is not enabled by default since the Flask app serves both API and frontend from the same origin (no cross-origin requests). If needed for development, CORS can be configured via environment variables.
+
 ## Testing the Application
 
 ### WAF Testing Commands
