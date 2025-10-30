@@ -1,6 +1,7 @@
 """
 Shared helper functions for API endpoints.
 """
+
 from flask import jsonify
 import time
 from github import GithubException
@@ -38,7 +39,9 @@ def json_success(data, status_code=200):
     return jsonify(data), status_code
 
 
-def create_pod_deployment(repo, specs_path, customer, env, spec_content, commit_message=None):
+def create_pod_deployment(
+    repo, specs_path, customer, env, spec_content, commit_message=None
+):
     """
     Create GitHub branch, commit spec file, and open PR.
 
@@ -70,19 +73,19 @@ def create_pod_deployment(repo, specs_path, customer, env, spec_content, commit_
         commit_message = f"Deploy {customer}/{env}"
 
     # 1. Create branch from main
-    base = repo.get_branch('main')
+    base = repo.get_branch("main")
     base_sha = base.commit.sha
     repo.create_git_ref(f"refs/heads/{branch_name}", base_sha)
 
     # 2. Check if file exists (update vs create)
     try:
-        existing_file = repo.get_contents(spec_path, ref='main')
+        existing_file = repo.get_contents(spec_path, ref="main")
         repo.update_file(
             path=spec_path,
             message=commit_message,
             content=spec_content,
             sha=existing_file.sha,
-            branch=branch_name
+            branch=branch_name,
         )
     except GithubException as e:
         if e.status == 404:
@@ -91,7 +94,7 @@ def create_pod_deployment(repo, specs_path, customer, env, spec_content, commit_
                 path=spec_path,
                 message=commit_message,
                 content=spec_content,
-                branch=branch_name
+                branch=branch_name,
             )
         else:
             raise
@@ -100,15 +103,6 @@ def create_pod_deployment(repo, specs_path, customer, env, spec_content, commit_
     pr_title = f"Deploy: {customer}/{env}"
     pr_body = f"Automated deployment for {customer}/{env}\n\nBranch: `{branch_name}`"
 
-    pr = repo.create_pull(
-        title=pr_title,
-        body=pr_body,
-        head=branch_name,
-        base='main'
-    )
+    pr = repo.create_pull(title=pr_title, body=pr_body, head=branch_name, base="main")
 
-    return {
-        'branch': branch_name,
-        'pr_url': pr.html_url,
-        'pr_number': pr.number
-    }
+    return {"branch": branch_name, "pr_url": pr.html_url, "pr_number": pr.number}

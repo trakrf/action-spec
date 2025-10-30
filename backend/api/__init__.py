@@ -11,9 +11,9 @@ Provides JSON endpoints for:
 from flask import Blueprint
 
 # Create API blueprint
-api_blueprint = Blueprint('api', __name__, url_prefix='/api')
+api_blueprint = Blueprint("api", __name__, url_prefix="/api")
 
 # Import routes to register with blueprint
 from . import routes
 
-__all__ = ['api_blueprint']
+__all__ = ["api_blueprint"]

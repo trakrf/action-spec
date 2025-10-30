@@ -1,82 +1,83 @@
-# Stack: Python Backend + React Frontend
+# Stack: Python Backend + Vue Frontend
 
 **Maturity**: Alpha - Velocity over stability. Breaking changes expected.
 
 ---
 
-## Python Backend (Lambda Functions)
+## Python Backend (Flask)
 
-> **Runtime**: Python 3.11
+> **Runtime**: Python 3.14
+> **Package Manager**: uv
 > **Test Framework**: pytest
 > **Formatter**: black
 > **Type Checker**: mypy
 
-### Lint & Format
+### Lint
 ```bash
-cd backend
-black --check lambda/ tests/
+just backend lint
 ```
 
 ### Format (auto-fix)
 ```bash
-cd backend
-black lambda/ tests/
-```
-
-### Typecheck
-```bash
-cd backend
-mypy lambda/ --ignore-missing-imports
+just backend format
 ```
 
 ### Test
 ```bash
-cd backend
-pytest tests/ -v --cov=lambda --cov-report=term-missing
-```
-
-### Test (specific file)
-```bash
-cd backend
-pytest tests/test_parser.py -v
-```
-
-### Test (with coverage threshold)
-```bash
-cd backend
-pytest tests/ -v --cov=lambda --cov-report=term-missing --cov-fail-under=80
-```
-
----
-
-## React Frontend (Phase 3.4+)
-
-> **Package Manager**: npm
-> **Test Runner**: Vitest
-> **Build Tool**: Vite
-
-### Lint
-```bash
-npm run lint --fix
-```
-
-### Typecheck
-```bash
-npm run typecheck
-```
-
-### Test
-```bash
-npm test
+just backend test
 ```
 
 ### Build
 ```bash
-npm run build
+just backend build
 ```
 
-### E2E Tests (Optional)
+---
+
+## Vue Frontend
+
+> **Framework**: Vue 3 (Composition API)
+> **Package Manager**: pnpm
+> **CSS Framework**: Tailwind CSS v4
+> **Test Runner**: Playwright
+> **Build Tool**: Vite
+> **Linter**: ESLint 9 (flat config)
+
+### Lint
 ```bash
-# If playwright.config.ts exists
-npm run test:e2e
+just frontend lint
+```
+
+### Test (E2E with Playwright)
+```bash
+just frontend test
+```
+
+### Build
+```bash
+just frontend build
+```
+
+---
+
+## Monorepo Commands
+
+### Lint All
+```bash
+just lint
+```
+
+### Test All
+```bash
+just test
+```
+
+### Build All
+```bash
+just build
+```
+
+### Validate All (lint + test + build)
+```bash
+just validate
 ```
