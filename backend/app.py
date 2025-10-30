@@ -27,7 +27,7 @@ app.config['SECRET_KEY'] = os.urandom(24)
 # Configuration from environment
 GH_TOKEN = os.environ.get('GH_TOKEN')
 GH_REPO = os.environ.get('GH_REPO', 'trakrf/action-spec')
-SPECS_PATH = os.environ.get('SPECS_PATH', 'demo/infra')
+SPECS_PATH = os.environ.get('SPECS_PATH', 'infra')
 WORKFLOW_BRANCH = os.environ.get('WORKFLOW_BRANCH', 'main')
 
 # Fail fast if GH_TOKEN missing

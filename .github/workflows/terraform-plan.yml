@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'demo/infra/**/spec.yml'
+      - 'infra/**/spec.yml'
 
 env:
   AWS_REGION: us-east-1
@@ -28,7 +28,7 @@ jobs:
         id: detect
         run: |
           # Find spec.yml files that changed in this PR
-          CHANGED_FILES=$(git diff --name-only origin/main..HEAD | grep 'demo/infra/.*/.*spec\.yml' || true)
+          CHANGED_FILES=$(git diff --name-only origin/main..HEAD | grep 'infra/.*/.*spec\.yml' || true)
 
           if [ -z "$CHANGED_FILES" ]; then
             echo "No spec.yml files changed"
@@ -45,11 +45,11 @@ jobs:
 
           echo "customer=$CUSTOMER" >> $GITHUB_OUTPUT
           echo "env=$ENV" >> $GITHUB_OUTPUT
-          echo "tf_dir=demo/infra/$CUSTOMER/$ENV" >> $GITHUB_OUTPUT
+          echo "tf_dir=infra/$CUSTOMER/$ENV" >> $GITHUB_OUTPUT
 
           echo "📋 Detected: $CUSTOMER/$ENV"
           echo "   Spec: $SPEC_PATH"
-          echo "   TF Dir: demo/infra/$CUSTOMER/$ENV"
+          echo "   TF Dir: infra/$CUSTOMER/$ENV"
 
       - name: Setup Terraform
         if: steps.detect.outputs.spec_path != ''
