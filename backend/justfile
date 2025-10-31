@@ -79,8 +79,8 @@ test:
         echo "❌ Virtual environment not found. Run: just backend setup"
         exit 1
     fi
-    @echo "⚠️  No tests configured yet"
-    @echo "✓ Test check passed (no tests to run)"
+    echo "⚠️  No tests configured yet"
+    echo "✓ Test check passed (no tests to run)"
 
 # Type check Python code
 typecheck:

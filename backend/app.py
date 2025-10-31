@@ -24,7 +24,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Flask app
-app = Flask(__name__, static_folder="../frontend/dist", static_url_path="")
+app = Flask(__name__, static_folder="static", static_url_path="")
 app.config["SECRET_KEY"] = os.urandom(24)
 
 # Configuration from environment
@@ -270,25 +270,8 @@ from api import api_blueprint
 app.register_blueprint(api_blueprint)
 
 
-@app.route("/")
-def index():
-    """Home page: list all pods grouped by customer"""
-    try:
-        pods = list_all_pods()
-
-        # Group by customer for template
-        customers = {}
-        for pod in pods:
-            cust = pod["customer"]
-            if cust not in customers:
-                customers[cust] = []
-            customers[cust].append(pod["env"])
-
-        return render_template("index.html.j2", pods=pods, customers=customers)
-
-    except Exception as e:
-        logger.error(f"Error rendering home page: {e}")
-        abort(500)
+# OLD ROUTE REMOVED: The "/" route now handled by serve_spa() at line ~736
+# This was leftover from pre-Vue migration and conflicted with SPA serving
 
 
 @app.route("/refresh")
@@ -674,32 +657,23 @@ def health():
 
 @app.errorhandler(404)
 def not_found_error(error):
-    """Handle 404 errors globally"""
-    return (
-        render_template(
-            "error.html.j2",
-            error_type="not_found",
-            error_title="Page Not Found",
-            error_message="The page you're looking for doesn't exist",
-            show_pods=True,
-            pods=list_all_pods(),
-        ),
-        404,
-    )
+    """Handle 404 errors - removed template rendering for Vue SPA compatibility"""
+    # For Vue SPA, 404 errors should pass through to SPA routing
+    # Don't handle 404s here - let serve_spa() handle them
+    pass
 
 
 @app.errorhandler(500)
 def internal_error(error):
-    """Handle 500 errors globally"""
+    """Handle 500 errors globally - return JSON for API compatibility"""
     logger.error(f"Internal server error: {error}")
     return (
-        render_template(
-            "error.html.j2",
-            error_type="server_error",
-            error_title="Internal Server Error",
-            error_message="Something went wrong. Please try again later.",
-            show_pods=False,
-            pods=[],
+        jsonify(
+            {
+                "error": "Internal Server Error",
+                "message": "Something went wrong. Please try again later.",
+                "status": 500,
+            }
         ),
         500,
     )
@@ -707,15 +681,14 @@ def internal_error(error):
 
 @app.errorhandler(503)
 def service_unavailable_error(error):
-    """Handle 503 errors (GitHub API issues)"""
+    """Handle 503 errors (GitHub API issues) - return JSON for API compatibility"""
     return (
-        render_template(
-            "error.html.j2",
-            error_type="service_unavailable",
-            error_title="Service Unavailable",
-            error_message="GitHub API is temporarily unavailable. Please try again later.",
-            show_pods=False,
-            pods=[],
+        jsonify(
+            {
+                "error": "Service Unavailable",
+                "message": "GitHub API is temporarily unavailable. Please try again later.",
+                "status": 503,
+            }
         ),
         503,
     )

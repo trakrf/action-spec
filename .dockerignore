@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+
+# Node
+node_modules
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+backend/__pycache__
+*.egg-info
+.pytest_cache
+.coverage
+
+# Development
+.env
+.env.local
+docker-compose.yml
+*.md
+.vscode
+.idea
+
+# Tests
+frontend/test-results
+frontend/playwright-report
+backend/tests
+
+# Infrastructure (not needed in container)
+infra/
+overengineered/
+spec/

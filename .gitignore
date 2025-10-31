@@ -74,6 +74,7 @@ htmlcov/
 *.egg-info/
 dist/
 build/
+backend/static
 
 # AWS SAM
 .aws-sam/
