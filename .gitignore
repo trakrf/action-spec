@@ -24,6 +24,7 @@ build/
 .env
 .env.local
 .env.*.local
+.envrc
 
 # OpenTofu / Terraform
 .terraform/
@@ -32,7 +33,6 @@ build/
 *.tfstate.backup
 *.tfvars
 !*.tfvars.example
-.terraform.lock.hcl
 crash.log
 crash.*.log
 override.tf
