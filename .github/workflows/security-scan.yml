@@ -56,8 +56,9 @@ jobs:
 
       - name: Check for Private IP Addresses
         run: |
-          # Exclude standard directories and lines with ignore comments
+          # Exclude standard directories, lock files, and lines with ignore comments
           if grep -r --exclude-dir={node_modules,.git,dist,build} \
+             --exclude="*-lock.yaml" --exclude="*-lock.json" --exclude="package-lock.json" \
              -E "10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\." \
              --include="*.tf" --include="*.yml" --include="*.yaml" . | \
              grep -vE "(nosec|security:ignore)"; then
