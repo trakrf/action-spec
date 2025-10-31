@@ -24,11 +24,20 @@ def client():
         yield client
 
 
+@pytest.fixture
+def mock_github_client():
+    """Mock GitHub client for tests."""
+    with patch("github_helpers.get_github_client") as mock:
+        mock_client = Mock()
+        mock.return_value = mock_client
+        yield mock_client
+
+
 class TestGetPods:
     """Tests for GET /api/pods"""
 
     @patch("app.list_all_pods")
-    def test_get_pods_success(self, mock_list_pods, client):
+    def test_get_pods_success(self, mock_list_pods, mock_github_client, client):
         """Should return list of pods from list_all_pods()"""
         mock_list_pods.return_value = [
             {"customer": "acme", "env": "dev"},
@@ -44,9 +53,11 @@ class TestGetPods:
         assert data[0]["env"] == "dev"
 
     @patch("app.list_all_pods")
-    def test_get_pods_github_error(self, mock_list_pods, client):
+    def test_get_pods_github_error(self, mock_list_pods, mock_github_client, client):
         """Should return 500 on GitHub API error"""
-        mock_list_pods.side_effect = GithubException(500, "API error", None)
+        mock_list_pods.side_effect = GithubException(
+            500, {"message": "API error"}, None
+        )
 
         response = client.get("/api/pods")
 
@@ -60,7 +71,7 @@ class TestGetPod:
     """Tests for GET /api/pod/<customer>/<env>"""
 
     @patch("app.fetch_spec")
-    def test_get_pod_success(self, mock_fetch, client):
+    def test_get_pod_success(self, mock_fetch, mock_github_client, client):
         """Should return parsed spec for valid pod"""
         mock_fetch.return_value = {
             "metadata": {"customer": "acme", "environment": "dev"},
@@ -75,7 +86,7 @@ class TestGetPod:
         assert "spec" in data
 
     @patch("app.fetch_spec")
-    def test_get_pod_not_found(self, mock_fetch, client):
+    def test_get_pod_not_found(self, mock_fetch, mock_github_client, client):
         """Should return 404 for non-existent pod"""
         mock_fetch.return_value = None
 
@@ -95,9 +106,9 @@ class TestGetPod:
         assert "error" in data
 
     @patch("app.fetch_spec")
-    def test_get_pod_github_404(self, mock_fetch, client):
+    def test_get_pod_github_404(self, mock_fetch, mock_github_client, client):
         """Should return 404 when GitHub returns 404"""
-        mock_fetch.side_effect = GithubException(404, "Not found", None)
+        mock_fetch.side_effect = GithubException(404, {"message": "Not found"}, None)
 
         response = client.get("/api/pod/acme/dev")
 
@@ -111,7 +122,9 @@ class TestCreatePod:
 
     @patch("api.helpers.create_pod_deployment")
     @patch("app.generate_spec_yaml")
-    def test_create_pod_success(self, mock_generate, mock_deploy, client):
+    def test_create_pod_success(
+        self, mock_generate, mock_deploy, mock_github_client, client
+    ):
         """Should create branch and PR for valid pod"""
         mock_generate.return_value = "metadata:\n  customer: acme\n"
         mock_deploy.return_value = {
