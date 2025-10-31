@@ -17,6 +17,8 @@ Create a production-ready multi-stage Docker image that:
 
 **Critical path dependency**: Update Flask static_folder path BEFORE creating Dockerfile (Dockerfile copies frontend/dist to backend/static/)
 
+**Local development strategy**: Create symlink `backend/static -> ../frontend/dist` so local dev continues to work after changing static_folder path. Symlink is git-ignored and not used in Docker build.
+
 ## Relevant Files
 
 **Reference Patterns** (existing code to follow):
@@ -32,6 +34,7 @@ Create a production-ready multi-stage Docker image that:
 
 **Files to Modify**:
 - `backend/app.py` (line 27) - Update static_folder from `"../frontend/dist"` to `"static"` (POLS for production)
+- `.gitignore` (root) - Add `backend/static` to ignore symlink
 
 ## Architecture Impact
 
@@ -121,7 +124,56 @@ just backend lint
 just backend test
 ```
 
-### Task 3: Create production Dockerfile
+### Task 3: Create symlink for local dev
+**File**: `backend/static` (symlink)
+**Action**: CREATE
+**Pattern**: Symlink to maintain local dev compatibility
+
+**Implementation**:
+```bash
+# Create symlink from backend/static to frontend/dist
+ln -sf ../frontend/dist backend/static
+
+# Verify symlink created
+ls -la backend/static
+```
+
+**Rationale**:
+- After changing static_folder to `"static"`, local dev needs backend/static/ to exist
+- Symlink points to frontend/dist (the actual build output)
+- Docker ignores this symlink (copies frontend/dist directly to backend/static/)
+- Git ignores this symlink (added to .gitignore)
+
+**Validation**:
+```bash
+# Verify symlink exists and points to correct target
+test -L backend/static && echo "✓ Symlink exists" || echo "✗ Symlink missing"
+readlink backend/static  # Should output: ../frontend/dist
+```
+
+### Task 4: Update .gitignore
+**File**: `.gitignore`
+**Action**: MODIFY
+**Pattern**: Ignore symlink in backend/
+
+**Implementation**:
+```gitignore
+# Add to .gitignore:
+backend/static
+```
+
+**Rationale**:
+- Symlink is environment-specific (local dev only)
+- Should not be committed to git
+- Production Docker creates its own backend/static/ directory
+
+**Validation**:
+```bash
+# Verify git ignores the symlink
+git status | grep -q "backend/static" && echo "✗ Not ignored" || echo "✓ Ignored"
+```
+
+### Task 5: Create production Dockerfile
 **File**: `Dockerfile`
 **Action**: CREATE
 **Pattern**: Multi-stage build combining frontend/Dockerfile (lines 1-19) and backend/Dockerfile patterns
@@ -202,7 +254,7 @@ docker images action-spec:test
 docker history action-spec:test
 ```
 
-### Task 4: Test Docker build locally (development mode)
+### Task 6: Test Docker build locally (development mode)
 **File**: N/A (testing)
 **Action**: TEST
 **Pattern**: Local Docker run with development environment variables
@@ -247,7 +299,7 @@ docker rm action-spec-test
 # If tests fail, debug and fix before proceeding
 ```
 
-### Task 5: Verify static file serving
+### Task 7: Verify static file serving
 **File**: N/A (testing)
 **Action**: TEST
 **Pattern**: Verify Vue SPA assets are served correctly
@@ -285,7 +337,7 @@ docker rm action-spec-test
 # Manual verification of curl responses
 ```
 
-### Task 6: Run full validation suite
+### Task 8: Run full validation suite
 **File**: N/A (validation)
 **Action**: VALIDATE
 **Pattern**: Run all validation commands from spec/stack.md
@@ -379,32 +431,38 @@ After each task:
 just backend lint
 just backend test
 
-# Task 3: Validate Docker build
+# Task 3: Verify symlink created
+test -L backend/static && readlink backend/static
+
+# Task 4: Verify git ignores symlink
+git status | grep -v "backend/static"
+
+# Task 5: Validate Docker build
 docker build -t action-spec:test .
 
-# Task 4: Validate runtime
+# Task 6: Validate runtime
 docker run -d -p 8080:8080 --name action-spec-test -e GH_TOKEN=${GH_TOKEN} action-spec:test
 curl http://localhost:8080/health
 docker stop action-spec-test && docker rm action-spec-test
 
-# Task 5: Validate static serving
+# Task 7: Validate static serving
 docker run -d -p 8080:8080 --name action-spec-test -e GH_TOKEN=${GH_TOKEN} action-spec:test
 curl -I http://localhost:8080/assets/index.js
 curl -I http://localhost:8080/nonexistent-page
 docker stop action-spec-test && docker rm action-spec-test
 
-# Task 6: Final validation
+# Task 8: Final validation
 just validate
 ```
 
 ## Plan Quality Assessment
 
-**Complexity Score**: 4/10 (MEDIUM-LOW)
+**Complexity Score**: 5/10 (MEDIUM)
 
 **Complexity Factors**:
-- 📁 File Impact: Creating 2 files, modifying 1 file (3 files total)
+- 📁 File Impact: Creating 3 files (.dockerignore, Dockerfile, symlink), modifying 2 files (app.py, .gitignore) = 5 files total
 - 🔗 Subsystems: Touching 3 subsystems (Frontend/Vue, Backend/Flask, Infrastructure/Docker)
-- 🔢 Task Estimate: 6 subtasks (well within manageable range)
+- 🔢 Task Estimate: 8 subtasks (well within manageable range)
 - 📦 Dependencies: 0 new packages (gunicorn already present)
 - 🆕 Pattern Novelty: Existing patterns (multi-stage Docker from frontend/Dockerfile)
 
