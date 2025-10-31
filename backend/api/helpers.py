@@ -40,7 +40,13 @@ def json_success(data, status_code=200):
 
 
 def create_pod_deployment(
-    repo, specs_path, customer, env, spec_content, commit_message=None
+    github_client,
+    repo_name,
+    specs_path,
+    customer,
+    env,
+    spec_content,
+    commit_message=None,
 ):
     """
     Create GitHub branch, commit spec file, and open PR.
@@ -48,7 +54,8 @@ def create_pod_deployment(
     Extracted from /deploy endpoint to be reusable by API.
 
     Args:
-        repo: PyGithub Repository object
+        github_client: Authenticated PyGithub client (user token or service account)
+        repo_name: Repository name (e.g., 'trakrf/action-spec')
         specs_path: Base path for specs (e.g., 'infra')
         customer: Customer name (validated)
         env: Environment name (validated)
@@ -71,6 +78,9 @@ def create_pod_deployment(
 
     if not commit_message:
         commit_message = f"Deploy {customer}/{env}"
+
+    # Get repository object
+    repo = github_client.get_repo(repo_name)
 
     # 1. Create branch from main
     base = repo.get_branch("main")

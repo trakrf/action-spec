@@ -16,6 +16,7 @@ import sys
 import time
 import logging
 import re
+from github_helpers import get_github_client, check_repo_access
 
 # Configure logging
 logging.basicConfig(
@@ -25,7 +26,13 @@ logger = logging.getLogger(__name__)
 
 # Flask app
 app = Flask(__name__, static_folder="static", static_url_path="")
-app.config["SECRET_KEY"] = os.urandom(24)
+# Flask secret key for sessions (CSRF protection during OAuth)
+# Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
+if not os.environ.get("FLASK_SECRET_KEY"):
+    logger.warning(
+        "FLASK_SECRET_KEY not set - using random key (sessions will not persist across restarts)"
+    )
 
 # Configuration from environment
 GH_TOKEN = os.environ.get("GH_TOKEN")
@@ -33,34 +40,45 @@ GH_REPO = os.environ.get("GH_REPO", "trakrf/action-spec")
 SPECS_PATH = os.environ.get("SPECS_PATH", "infra")
 WORKFLOW_BRANCH = os.environ.get("WORKFLOW_BRANCH", "main")
 
-# Fail fast if GH_TOKEN missing
+# GH_TOKEN is now optional (fallback for operations without user context)
 if not GH_TOKEN:
-    logger.error("GH_TOKEN environment variable is required")
-    logger.error("Set GH_TOKEN in your environment or .env.local file")
-    sys.exit(1)
+    logger.warning(
+        "GH_TOKEN not set - application will require user authentication for all GitHub operations"
+    )
+    logger.warning(
+        "For local development, set GH_TOKEN in .env.local, or log in via /auth/login"
+    )
 
 logger.info(f"Initializing Spec Editor")
 logger.info(f"GitHub Repo: {GH_REPO}")
 logger.info(f"Specs Path: {SPECS_PATH}")
 logger.info(f"Workflow Branch: {WORKFLOW_BRANCH}")
 
-# Initialize GitHub client (fail fast on auth errors)
-try:
-    github = Github(GH_TOKEN)
-    repo = github.get_repo(GH_REPO)
-    # Test connectivity
-    repo.get_contents(SPECS_PATH, ref=WORKFLOW_BRANCH)
+# Initialize GitHub client (with GH_TOKEN if available, for startup checks)
+github = None
+repo = None
+
+if GH_TOKEN:
+    try:
+        github = Github(GH_TOKEN)
+        repo = github.get_repo(GH_REPO)
+        # Test connectivity
+        repo.get_contents(SPECS_PATH, ref=WORKFLOW_BRANCH)
+        logger.info(
+            f"✓ Successfully connected to GitHub repo: {GH_REPO} (branch: {WORKFLOW_BRANCH}) using GH_TOKEN"
+        )
+    except BadCredentialsException:
+        logger.error("GitHub authentication failed: Invalid or expired GH_TOKEN")
+        logger.error("Check that GH_TOKEN has 'repo' scope")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Failed to initialize GitHub client: {e}")
+        logger.error(f"Repository: {GH_REPO}, Path: {SPECS_PATH}")
+        sys.exit(1)
+else:
     logger.info(
-        f"✓ Successfully connected to GitHub repo: {GH_REPO} (branch: {WORKFLOW_BRANCH})"
+        "Starting without GH_TOKEN - user authentication required for GitHub operations"
     )
-except BadCredentialsException:
-    logger.error("GitHub authentication failed: Invalid or expired token")
-    logger.error("Check that GH_TOKEN has 'repo' scope")
-    sys.exit(1)
-except Exception as e:
-    logger.error(f"Failed to initialize GitHub client: {e}")
-    logger.error(f"Repository: {GH_REPO}, Path: {SPECS_PATH}")
-    sys.exit(1)
 
 # Simple cache with 30-second TTL (demo usage has plenty of API quota)
 _cache = {}
@@ -177,6 +195,7 @@ def generate_spec_yaml(customer, env, instance_name, waf_enabled):
 def fetch_spec(customer, env):
     """
     Fetch and parse spec.yml from GitHub for a specific pod.
+    Uses user token from cookie, falls back to GH_TOKEN if available.
 
     Args:
         customer: Customer name (validated)
@@ -192,7 +211,12 @@ def fetch_spec(customer, env):
 
     try:
         logger.info(f"Fetching spec: {path}")
-        content = repo.get_contents(path, ref=WORKFLOW_BRANCH)
+
+        # Get authenticated GitHub client (user token or GH_TOKEN fallback)
+        github_client = get_github_client(require_user=False)
+        repo_obj = github_client.get_repo(GH_REPO)
+
+        content = repo_obj.get_contents(path, ref=WORKFLOW_BRANCH)
         spec_yaml = content.decoded_content.decode("utf-8")
         spec = yaml.safe_load(spec_yaml)
         logger.info(f"✓ Successfully parsed spec for {customer}/{env}")
@@ -210,6 +234,7 @@ def fetch_spec(customer, env):
 def list_all_pods():
     """
     Dynamically discover pods by walking GitHub repo structure.
+    Uses user token from cookie, falls back to GH_TOKEN if available.
     Returns list of {"customer": str, "env": str} dicts.
     Sorted: alphabetically by customer, lifecycle order by env (dev, stg, prd).
     """
@@ -222,14 +247,18 @@ def list_all_pods():
     pods = []
 
     try:
-        customers = repo.get_contents(SPECS_PATH, ref=WORKFLOW_BRANCH)
+        # Get authenticated GitHub client (user token or GH_TOKEN fallback)
+        github_client = get_github_client(require_user=False)
+        repo_obj = github_client.get_repo(GH_REPO)
+
+        customers = repo_obj.get_contents(SPECS_PATH, ref=WORKFLOW_BRANCH)
 
         for customer in customers:
             if customer.type != "dir":
                 continue
 
             try:
-                envs = repo.get_contents(
+                envs = repo_obj.get_contents(
                     f"{SPECS_PATH}/{customer.name}", ref=WORKFLOW_BRANCH
                 )
                 for env in envs:
@@ -238,7 +267,7 @@ def list_all_pods():
 
                     # Check if spec.yml exists
                     try:
-                        repo.get_contents(
+                        repo_obj.get_contents(
                             f"{SPECS_PATH}/{customer.name}/{env.name}/spec.yml",
                             ref=WORKFLOW_BRANCH,
                         )
@@ -268,6 +297,11 @@ def list_all_pods():
 from api import api_blueprint
 
 app.register_blueprint(api_blueprint)
+
+# Register auth blueprint
+from auth import auth_blueprint
+
+app.register_blueprint(auth_blueprint)
 
 
 # OLD ROUTE REMOVED: The "/" route now handled by serve_spa() at line ~736
@@ -354,11 +388,15 @@ def new_pod():
 @app.route("/deploy", methods=["POST"])
 def deploy():
     """Handle form submission - validate and preview (D5A: no actual deployment)"""
-    if not repo:
-        logger.error("GitHub client not initialized")
+    if not repo and not os.environ.get("GH_TOKEN"):
+        logger.error("GitHub client not initialized and no GH_TOKEN available")
         abort(500)
 
     try:
+        # Get authenticated GitHub client (user token or GH_TOKEN fallback)
+        github_client = get_github_client(require_user=False)
+        repo_obj = github_client.get_repo(GH_REPO)
+
         # Extract and validate form data
         customer = validate_path_component(request.form["customer"], "customer")
         env = validate_path_component(request.form["environment"], "environment")
@@ -370,7 +408,7 @@ def deploy():
         if mode == "new":
             path = f"{SPECS_PATH}/{customer}/{env}/spec.yml"
             try:
-                repo.get_contents(path, ref=WORKFLOW_BRANCH)
+                repo_obj.get_contents(path, ref=WORKFLOW_BRANCH)
                 # File exists - reject with 409 Conflict
                 logger.warning(f"Attempted to create existing pod: {customer}/{env}")
                 pods = list_all_pods()
@@ -401,11 +439,11 @@ def deploy():
 
         try:
             # Get base branch (main) commit SHA
-            base = repo.get_branch("main")
+            base = repo_obj.get_branch("main")
             base_sha = base.commit.sha
 
             # Create new branch from main
-            repo.create_git_ref(f"refs/heads/{branch_name}", base_sha)
+            repo_obj.create_git_ref(f"refs/heads/{branch_name}", base_sha)
             logger.info(f"✓ Branch created: {branch_name}")
 
         except GithubException as e:
@@ -430,10 +468,10 @@ def deploy():
         try:
             # Try to get existing file (for updates)
             try:
-                file = repo.get_contents(spec_path, ref="main")
+                file = repo_obj.get_contents(spec_path, ref="main")
                 # File exists - update it
                 commit_message = f"deploy: Update {customer}/{env} infrastructure\n\nInstance: {instance_name}\nWAF: {'enabled' if waf_enabled else 'disabled'}"
-                repo.update_file(
+                repo_obj.update_file(
                     path=spec_path,
                     message=commit_message,
                     content=spec_content,
@@ -446,7 +484,7 @@ def deploy():
                 if e.status == 404:
                     # File doesn't exist - create it (new pod)
                     commit_message = f"deploy: Create {customer}/{env} infrastructure\n\nInstance: {instance_name}\nWAF: {'enabled' if waf_enabled else 'disabled'}"
-                    repo.create_file(
+                    repo_obj.create_file(
                         path=spec_path,
                         message=commit_message,
                         content=spec_content,
@@ -498,7 +536,7 @@ Review the terraform plan output below before merging.
 """
 
         try:
-            pr = repo.create_pull(
+            pr = repo_obj.create_pull(
                 title=pr_title, body=pr_body, head=branch_name, base="main"
             )
             logger.info(f"✓ PR created: {pr.html_url} (#{pr.number})")
@@ -601,11 +639,15 @@ Review the terraform plan output below before merging.
 def health():
     """Health check: validate GitHub connectivity and show rate limit"""
     try:
+        # Get authenticated GitHub client (user token or GH_TOKEN fallback)
+        github_client = get_github_client(require_user=False)
+        repo_obj = github_client.get_repo(GH_REPO)
+
         # Test connectivity
-        repo.get_contents(SPECS_PATH, ref=WORKFLOW_BRANCH)
+        repo_obj.get_contents(SPECS_PATH, ref=WORKFLOW_BRANCH)
 
         # Get rate limit info
-        rate_limit = github.get_rate_limit()
+        rate_limit = github_client.get_rate_limit()
         remaining = rate_limit.core.remaining
         limit = rate_limit.core.limit
         reset_timestamp = rate_limit.core.reset.timestamp()
@@ -614,7 +656,7 @@ def health():
         has_workflow_scope = False
         try:
             # Try to list workflows (requires workflow scope)
-            workflows = repo.get_workflows()
+            workflows = repo_obj.get_workflows()
             has_workflow_scope = workflows.totalCount > 0
         except:
             pass

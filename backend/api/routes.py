@@ -11,6 +11,7 @@ from .helpers import json_error, json_success, create_pod_deployment
 # Import existing functions and globals from main app
 # Using late imports to avoid circular dependency issues
 import app as main_app
+from github_helpers import get_github_client
 
 
 @api_blueprint.route("/pods", methods=["GET"])
@@ -167,8 +168,12 @@ def create_or_update_pod():
 
     # Create deployment (branch + PR)
     try:
+        # Get authenticated GitHub client
+        github_client = get_github_client(require_user=False)
+
         result = create_pod_deployment(
-            main_app.repo,
+            github_client,
+            main_app.GH_REPO,
             main_app.SPECS_PATH,
             customer,
             env,
