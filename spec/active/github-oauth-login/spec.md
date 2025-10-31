@@ -193,7 +193,7 @@ onMounted(() => {
 
 #### Secrets Manager (Terraform)
 
-**Add OAuth credentials** (`infra/tools/secrets.tf`):
+**Add OAuth credentials** (`infra/tools/aws/secrets.tf`):
 ```hcl
 resource "aws_secretsmanager_secret" "github_oauth_client_secret" {
   name                    = "action-spec/github-oauth-client-secret"
@@ -215,7 +215,7 @@ resource "aws_secretsmanager_secret_version" "github_oauth_client_secret" {
 
 #### App Runner Configuration (Terraform)
 
-**Add environment variables** (`infra/tools/main.tf`):
+**Add environment variables** (`infra/tools/aws/main.tf`):
 ```hcl
 runtime_environment_variables = {
   AWS_REGION               = var.aws_region
@@ -231,7 +231,7 @@ runtime_environment_secrets = {
 }
 ```
 
-**Add variables** (`infra/tools/variables.tf`):
+**Add variables** (`infra/tools/aws/variables.tf`):
 ```hcl
 variable "github_oauth_client_id" {
   description = "GitHub OAuth App Client ID (public identifier)"
@@ -555,5 +555,5 @@ def check_access(repo_owner, repo_name):
 ## Related Work
 
 - **Parent Feature**: App Runner Phase 1 Deployment (PR #39)
-- **Infrastructure**: `infra/tools/` Terraform configuration
+- **Infrastructure**: `infra/tools/aws/` Terraform configuration
 - **Future Work**: App Runner Phase 2 (Observability)
