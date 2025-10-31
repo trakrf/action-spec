@@ -125,7 +125,89 @@ resource "aws_cloudwatch_metric_alarm" "app_runner_high_cpu" {
 }
 ```
 
-#### 3. Outputs (add to outputs.tf)
+**Memory Utilization Alarm**:
+```hcl
+resource "aws_cloudwatch_metric_alarm" "app_runner_high_memory" {
+  alarm_name          = "action-spec-high-memory"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "MemoryUtilization"
+  namespace           = "AWS/AppRunner"
+  period              = 300  # 5 minutes
+  statistic           = "Average"
+  threshold           = 80
+  alarm_description   = "Alert when memory exceeds 80% for 10 minutes"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ServiceName = aws_apprunner_service.action_spec.service_name
+  }
+
+  # Optional: Add SNS topic ARN here for notifications
+  # alarm_actions = [aws_sns_topic.alerts.arn]
+}
+```
+
+**Health Check Failures Alarm**:
+```hcl
+resource "aws_cloudwatch_metric_alarm" "app_runner_health_check_failures" {
+  alarm_name          = "action-spec-health-check-failures"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "HealthCheckFailed"
+  namespace           = "AWS/AppRunner"
+  period              = 300  # 5 minutes
+  statistic           = "Sum"
+  threshold           = 3
+  alarm_description   = "Alert when health checks fail more than 3 times in 5 minutes"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ServiceName = aws_apprunner_service.action_spec.service_name
+  }
+
+  # Optional: Add SNS topic ARN here for notifications
+  # alarm_actions = [aws_sns_topic.alerts.arn]
+}
+```
+
+#### 3. CloudWatch Log Insights Queries
+
+Create saved queries for common debugging scenarios:
+
+**Application Errors**:
+```
+fields @timestamp, @message
+| filter @message like /ERROR/
+| sort @timestamp desc
+| limit 50
+```
+
+**5xx Errors**:
+```
+fields @timestamp, @message
+| filter @message like /5\d{2}/
+| stats count() by bin(5m)
+```
+
+**Slow Requests**:
+```
+fields @timestamp, @message
+| filter @message like /duration/
+| parse @message /duration: (?<duration>\d+)ms/
+| filter duration > 1000
+| sort duration desc
+```
+
+**Health Check Status**:
+```
+fields @timestamp, @message
+| filter @message like /health/
+| sort @timestamp desc
+| limit 20
+```
+
+#### 4. Outputs (add to outputs.tf)
 ```hcl
 output "cloudwatch_log_group" {
   description = "CloudWatch log group name"
@@ -140,6 +222,16 @@ output "alarm_5xx_arn" {
 output "alarm_cpu_arn" {
   description = "ARN of CPU utilization alarm"
   value       = aws_cloudwatch_metric_alarm.app_runner_high_cpu.arn
+}
+
+output "alarm_memory_arn" {
+  description = "ARN of memory utilization alarm"
+  value       = aws_cloudwatch_metric_alarm.app_runner_high_memory.arn
+}
+
+output "alarm_health_check_arn" {
+  description = "ARN of health check failures alarm"
+  value       = aws_cloudwatch_metric_alarm.app_runner_health_check_failures.arn
 }
 ```
 
@@ -296,20 +388,189 @@ tofu apply
 - View current infrastructure: `tofu show`
 - Check drift: `tofu plan` (should show no changes)
 
+### Testing & Validation
+
+After Phase 2 deployment, perform end-to-end validation:
+
+#### Test Cases
+
+**1. Load Blueprint from GitHub**:
+```bash
+# Access the deployed app
+curl https://<app-runner-url>/
+
+# Verify UI loads
+# Navigate to blueprint selector
+# Select a blueprint from the configured GitHub repo
+# Expected: Blueprint loads successfully, displays infrastructure parameters
+```
+
+**2. Edit Values in UI**:
+- Modify infrastructure parameter values (e.g., instance_type, region)
+- Expected: UI reflects changes immediately
+- Expected: No errors in browser console
+
+**3. Validate Against AWS**:
+- Click "Validate" button
+- Expected: Validation runs against AWS API
+- Expected: Returns success/failure with clear messages
+- Expected: Check CloudWatch logs for validation API calls
+
+**4. Trigger workflow_dispatch**:
+```bash
+# From UI, trigger GitHub Actions workflow
+# Expected: Workflow dispatch event sent to GitHub API
+# Expected: Success message displayed in UI
+```
+
+**5. Verify Workflow Execution**:
+```bash
+# Check GitHub Actions tab in repo
+gh run list --limit 5
+
+# Expected: New workflow run appears
+# Expected: Run completes successfully
+# Expected: Infrastructure changes applied (if validation passed)
+```
+
+#### Monitoring Validation
+
+**6. Verify CloudWatch Logs**:
+```bash
+# Tail logs in real-time
+aws logs tail /aws/apprunner/action-spec-service --follow
+
+# Expected: Application logs appear within 1 minute
+# Expected: Request/response logs visible
+# Expected: No ERROR level messages during normal operation
+```
+
+**7. Check Alarm Status**:
+```bash
+# List all alarms
+aws cloudwatch describe-alarms --alarm-names \
+  action-spec-high-5xx-errors \
+  action-spec-high-cpu \
+  action-spec-high-memory \
+  action-spec-health-check-failures
+
+# Expected: All alarms in "OK" state
+# Expected: No "ALARM" state unless intentionally triggered
+```
+
+**8. Test CloudWatch Insights Queries**:
+- Navigate to CloudWatch > Logs Insights
+- Select log group: `/aws/apprunner/action-spec-service`
+- Run each saved query from section "CloudWatch Log Insights Queries"
+- Expected: Queries execute successfully
+- Expected: Results show application activity
+
+#### Optional: Trigger Test Alarm
+
+**9. Intentionally Trigger 5xx Alarm** (for validation):
+```python
+# Add temporary route to backend for testing
+@app.route('/test/trigger-500')
+def trigger_500():
+    abort(500)
+
+# Make 6 requests within 5 minutes
+for i in range(6):
+    curl https://<app-runner-url>/test/trigger-500
+```
+- Expected: 5xx alarm triggers within 5 minutes
+- Expected: Alarm state changes to "ALARM"
+- Remove test route after validation
+
+### Handoff Requirements
+
+Phase 2 includes handoff to MediaCo team:
+
+#### Pre-Handoff Checklist
+- [ ] All monitoring resources deployed and verified
+- [ ] All documentation complete and tested
+- [ ] End-to-end testing passed (all 9 test cases above)
+- [ ] Application healthy and responding
+- [ ] No active alarms
+
+#### Handoff Session
+**Demo Walkthrough** (30-45 minutes):
+1. Show deployed application in action
+2. Walk through loading a blueprint
+3. Demonstrate editing and validation
+4. Show workflow dispatch triggering
+5. Verify workflow execution in GitHub
+6. Show CloudWatch logs in real-time
+7. Explain alarm setup and monitoring
+
+**Documentation Review** (15 minutes):
+- Walk through DEPLOYMENT.md
+- Explain OPERATIONS.md runbook
+- Answer questions about troubleshooting
+
+**Access Handoff**:
+- Confirm MediaCo team has AWS console access
+- Verify they can access:
+  - App Runner service
+  - CloudWatch logs
+  - CloudWatch alarms
+  - Secrets Manager (for token updates)
+- Provide credentials if needed
+
+**Confirmation** (get explicit sign-off):
+- [ ] Team can access and use the tool successfully
+- [ ] Team understands how to check logs and alarms
+- [ ] Team knows how to update secrets if needed
+- [ ] Team has contact for escalation (if issues arise)
+- [ ] All questions answered
+
+#### Post-Handoff
+- Document any issues raised during handoff
+- Address blockers immediately
+- Schedule follow-up check-in (1 week later)
+- Mark D2A-30 complete only after confirmation received
+
 ## Validation Criteria
 
 Phase 2 is complete when:
 
-- [ ] `monitoring.tf` created with log group and 2 alarms
-- [ ] `tofu plan` shows 3 new resources (log group + 2 alarms)
+**Infrastructure**:
+- [ ] `monitoring.tf` created with log group and 4 alarms (5xx, CPU, Memory, Health Check)
+- [ ] `tofu plan` shows 5 new resources (log group + 4 alarms)
 - [ ] `tofu apply` successfully creates monitoring resources
 - [ ] CloudWatch log group exists and receives logs
-- [ ] Both alarms are in "OK" state (or "INSUFFICIENT_DATA" initially)
+- [ ] All 4 alarms are in "OK" state (or "INSUFFICIENT_DATA" initially)
+- [ ] All alarm outputs added to `outputs.tf`
+
+**CloudWatch Insights**:
+- [ ] All 4 saved queries created and tested
+- [ ] Queries return expected results with application data
+
+**Documentation**:
 - [ ] `docs/DEPLOYMENT.md` is comprehensive and accurate
 - [ ] `docs/OPERATIONS.md` is comprehensive and accurate
 - [ ] `infra/tools/README.md` enhanced with troubleshooting
 - [ ] All documentation tested by following steps exactly
-- [ ] Can trigger a 5xx alarm by intentional error (optional validation)
+
+**Testing & Validation**:
+- [ ] Test Case 1: Load blueprint from GitHub (✓ passes)
+- [ ] Test Case 2: Edit values in UI (✓ passes)
+- [ ] Test Case 3: Validate against AWS (✓ passes)
+- [ ] Test Case 4: Trigger workflow_dispatch (✓ passes)
+- [ ] Test Case 5: Verify workflow execution (✓ passes)
+- [ ] Test Case 6: Verify CloudWatch logs (✓ passes)
+- [ ] Test Case 7: Check alarm status (✓ passes)
+- [ ] Test Case 8: Test CloudWatch Insights queries (✓ passes)
+- [ ] Test Case 9: Trigger test alarm (optional, ✓ if attempted)
+
+**Handoff**:
+- [ ] Pre-handoff checklist complete (all items ✓)
+- [ ] Demo walkthrough completed with MediaCo team
+- [ ] Documentation review completed
+- [ ] Access handoff completed (team has AWS access)
+- [ ] Team confirmation received (explicit sign-off)
+- [ ] All team questions answered
+- [ ] Follow-up scheduled (1 week post-handoff)
 
 ## Success Metrics
 
@@ -320,10 +581,11 @@ Phase 2 is complete when:
 
 ## Implementation Notes
 
-- **No code changes**: Only Terraform and documentation
+- **Minimal code changes**: Only Terraform, documentation, and optional test route
 - **Idempotent**: Can run `tofu apply` multiple times safely
 - **Non-breaking**: Adding monitoring doesn't affect running service
 - **Future-proof**: Document SNS setup but don't implement (out of scope)
+- **Handoff required**: Phase 2 not complete until MediaCo team sign-off
 
 ## References
 
