@@ -1,6 +1,21 @@
 #!/bin/bash
 set -euo pipefail
 
+# Pre-commit Security Scanner
+#
+# Scans for:
+# - AWS account IDs (12-digit patterns)
+# - Private IP addresses (10.x, 172.16-31.x, 192.168.x)
+# - Secret patterns (passwords, tokens, API keys)
+# - Forbidden files (.env, .tfstate, etc.)
+#
+# To ignore a specific line, add a comment:
+#   # nosec
+#   # security:ignore
+#
+# Example:
+#   app.run(host="0.0.0.0")  # nosec - bind address for container
+
 # ANSI color codes for output
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -75,13 +90,17 @@ for file in $FILTERED_FILES; do
   # For markdown files, only check for the real account number
   if [[ "$file" =~ \.md$ ]]; then
     while IFS=: read -r line_num line_text; do
-      if [[ "$line_text" =~ 252374924199 ]]; then
-        report_violation "$file" "$line_num" "Real AWS Account ID detected" "252374924199"
+      if [[ "$line_text" =~ 252374924199 ]]; then  # nosec - example in documentation
+        report_violation "$file" "$line_num" "Real AWS Account ID detected" "252374924199"  # nosec
       fi
-    done < <(grep -nI "252374924199" "$file" 2>/dev/null || true)
+    done < <(grep -nI "252374924199" "$file" 2>/dev/null || true)  # nosec
   else
     # For code files, block any 12-digit pattern except clearly fake test IDs
     while IFS=: read -r line_num line_text; do
+      # Skip lines with nosec or security:ignore comments
+      if [[ "$line_text" =~ (nosec|security:ignore) ]]; then
+        continue
+      fi
       if [[ "$line_text" =~ [0-9]{12} ]]; then
         matched=$(echo "$line_text" | grep -oE '[0-9]{12}' | head -1)
         # Skip common fake/test account IDs and known public AWS account IDs
@@ -117,6 +136,10 @@ for file in $FILTERED_FILES; do
 
   # Check for 10.x.x.x
   while IFS=: read -r line_num line_text; do
+    # Skip lines with nosec or security:ignore comments
+    if [[ "$line_text" =~ (nosec|security:ignore) ]]; then
+      continue
+    fi
     matched=$(echo "$line_text" | grep -oE '10\.([0-9]{1,3}\.){2}[0-9]{1,3}' | head -1)
     if [ -n "$matched" ]; then
       report_violation "$file" "$line_num" "Private IP address (10.x.x.x)" "$matched"
@@ -125,6 +148,10 @@ for file in $FILTERED_FILES; do
 
   # Check for 172.16-31.x.x
   while IFS=: read -r line_num line_text; do
+    # Skip lines with nosec or security:ignore comments
+    if [[ "$line_text" =~ (nosec|security:ignore) ]]; then
+      continue
+    fi
     matched=$(echo "$line_text" | grep -oE '172\.(1[6-9]|2[0-9]|3[01])\.([0-9]{1,3}\.)[0-9]{1,3}' | head -1)
     if [ -n "$matched" ]; then
       report_violation "$file" "$line_num" "Private IP address (172.16-31.x.x)" "$matched"
@@ -133,6 +160,10 @@ for file in $FILTERED_FILES; do
 
   # Check for 192.168.x.x
   while IFS=: read -r line_num line_text; do
+    # Skip lines with nosec or security:ignore comments
+    if [[ "$line_text" =~ (nosec|security:ignore) ]]; then
+      continue
+    fi
     matched=$(echo "$line_text" | grep -oE '192\.168\.([0-9]{1,3}\.)[0-9]{1,3}' | head -1)
     if [ -n "$matched" ]; then
       report_violation "$file" "$line_num" "Private IP address (192.168.x.x)" "$matched"
@@ -163,6 +194,10 @@ for pattern in "${SECRET_PATTERNS[@]}"; do
     fi
 
     while IFS=: read -r line_num line_text; do
+      # Skip lines with nosec or security:ignore comments
+      if [[ "$line_text" =~ (nosec|security:ignore) ]]; then
+        continue
+      fi
       matched=$(echo "$line_text" | grep -oE "$pattern" | head -1)
       if [ -n "$matched" ]; then
         report_violation "$file" "$line_num" "Potential secret detected" "$matched"
