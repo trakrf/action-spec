@@ -84,7 +84,7 @@ jobs:
 
       - name: Comment PR with Plan
         if: steps.detect.outputs.spec_path != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           PLAN_OUTPUT: ${{ steps.plan.outputs.stdout }}
         with:
