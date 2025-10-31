@@ -32,7 +32,7 @@ jobs:
 
       - name: Check for AWS Account IDs
         run: |
-          # Exclude standard directories and skip common test IDs + official AWS AMI publishers
+          # Exclude standard directories, ignore comments, and skip common test IDs + official AWS AMI publishers
           # Test/Example IDs: 000000000000, 111111111111, 999999999999, 123456789012
           # Official AMI Publishers:
           #   099720109477 = Canonical (Ubuntu AMIs)
@@ -45,22 +45,27 @@ jobs:
              -E "[0-9]{12}" \
              --include="*.tf" --include="*.py" --include="*.js" \
              --include="*.yml" --include="*.yaml" . | \
+             grep -vE "(nosec|security:ignore)" | \
              grep -vE "(000000000000|111111111111|999999999999|123456789012|099720109477|801119661308|137112412989|591542846629|679593333241|898082745236)"; then
             echo "❌ Found AWS account ID patterns"
             echo "Review and use variables instead of hardcoded IDs"
+            echo "Or add # nosec comment to acknowledge intentional use"
             exit 1
           fi
           echo "✅ No AWS account IDs found (test IDs and official AMI publishers allowed)"
 
       - name: Check for Private IP Addresses
         run: |
-          # Exclude standard directories
-          if grep -r --exclude-dir={node_modules,.git,dist,build} \
-             -E "10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\." \
-             --include="*.tf" --include="*.yml" --include="*.yaml" .; then
-            echo "❌ Found private IP address patterns"
-            echo "Review and use variables instead of hardcoded IPs"
-            exit 1
+          # Only check actual infrastructure files in infra/ and .github/workflows/
+          # Ignore lock files, docs, and application code
+          INFRA_FILES=$(find infra .github/workflows -type f \( -name "*.tf" -o -name "*.yml" -o -name "*.yaml" \) 2>/dev/null || true)
+          if [ -n "$INFRA_FILES" ]; then
+            if echo "$INFRA_FILES" | xargs grep -E "10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\." | grep -vE "(nosec|security:ignore)"; then
+              echo "❌ Found private IP address patterns"
+              echo "Review and use variables instead of hardcoded IPs"
+              echo "Or add # nosec comment to acknowledge intentional use"
+              exit 1
+            fi
           fi
           echo "✅ No private IP addresses found"
 

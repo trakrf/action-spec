@@ -1,0 +1,34 @@
+# Frontend Task Runner (ActionSpec)
+# Uses fallback to inherit shared recipes from root justfile
+set fallback := true
+
+# List all available recipes
+default:
+    @just --list
+
+# Start Vite development server
+dev:
+    pnpm dev
+
+# Lint Vue code (auto-fix enabled)
+lint:
+    pnpm run lint
+
+# Run E2E tests with Playwright
+test:
+    pnpm run test
+
+# Build frontend for production
+build:
+    pnpm run build
+
+# Run all validation checks
+validate: lint test build
+
+# Install dependencies
+install:
+    pnpm install
+
+# Clean build artifacts
+clean:
+    rm -rf dist node_modules/.vite

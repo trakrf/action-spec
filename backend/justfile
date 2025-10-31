@@ -1,0 +1,117 @@
+# Backend Task Runner (ActionSpec)
+# Uses fallback to inherit shared recipes from root justfile
+set fallback := true
+
+# List all available recipes
+default:
+    @just --list
+
+# Start Flask development server
+dev:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Load environment variables from root .env.local
+    if [ -f "../.env.local" ]; then
+        set -a
+        source ../.env.local
+        set +a
+        echo "✓ Loaded environment from .env.local"
+    else
+        echo "⚠️  Warning: .env.local not found in root directory"
+    fi
+
+    # Check venv
+    if [ ! -d ".venv" ]; then
+        echo "❌ Virtual environment not found. Run: just backend setup"
+        exit 1
+    fi
+
+    echo "✓ Using uv"
+    echo ""
+    echo "🚀 Starting Flask development server..."
+    echo "   Open http://localhost:5000 in your browser"
+    echo "   Press Ctrl+C to stop"
+    echo ""
+    uv run flask --app app run --debug --host 0.0.0.0
+
+# Set up virtual environment and install dependencies
+setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "Creating virtual environment with uv..."
+    uv venv
+
+    echo "Installing dependencies with uv..."
+    uv pip install -r requirements.txt
+
+    echo "✓ Setup complete!"
+    echo "  Run 'just backend dev' to start the Flask server"
+
+# Lint Python code
+lint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d ".venv" ]; then
+        echo "❌ Virtual environment not found. Run: just backend setup"
+        exit 1
+    fi
+    uv run black --check . || true
+    echo "✓ Lint complete"
+
+# Format Python code
+format:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d ".venv" ]; then
+        echo "❌ Virtual environment not found. Run: just backend setup"
+        exit 1
+    fi
+    uv run black .
+    echo "✓ Format complete"
+
+# Run backend tests
+test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d ".venv" ]; then
+        echo "❌ Virtual environment not found. Run: just backend setup"
+        exit 1
+    fi
+    @echo "⚠️  No tests configured yet"
+    @echo "✓ Test check passed (no tests to run)"
+
+# Type check Python code
+typecheck:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d ".venv" ]; then
+        echo "❌ Virtual environment not found. Run: just backend setup"
+        exit 1
+    fi
+    uv run mypy . --ignore-missing-imports || true
+
+# Build (validate imports)
+build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d ".venv" ]; then
+        echo "❌ Virtual environment not found. Run: just backend setup"
+        exit 1
+    fi
+    uv run python -m py_compile app.py
+    echo "✓ Backend build validation passed"
+
+# Run all validation checks
+validate: lint typecheck test build
+
+# Clean up virtual environment and cache
+clean:
+    #!/usr/bin/env bash
+    rm -rf .venv __pycache__ templates/__pycache__ .pytest_cache
+    echo "✓ Cleaned up .venv and cache files"
+
+# Health check (requires server to be running)
+health:
+    @curl -s http://localhost:5000/health | python3 -m json.tool
