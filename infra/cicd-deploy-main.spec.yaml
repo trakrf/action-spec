@@ -1,3 +1,8 @@
+# CI/CD Deployment Specification (Example)
+# Replace placeholders with your actual AWS account details:
+# - YOUR_ACCOUNT_ID: Your AWS account ID (12 digits)
+# - YOUR_SERVICE_ID: Your App Runner service unique ID
+
 apiVersion: workflow/v1
 kind: GitHubActionsWorkflow
 metadata:
@@ -25,7 +30,7 @@ spec:
         - name: Configure AWS credentials
           uses: aws-actions/configure-aws-credentials@v4
           with:
-            role-to-assume: arn:aws:iam::252374924199:role/github-actions-deploy-role
+            role-to-assume: arn:aws:iam::YOUR_ACCOUNT_ID:role/github-actions-deploy-role
             aws-region: us-east-2
 
         - name: Login to Amazon ECR
@@ -59,7 +64,7 @@ spec:
 
         - name: Trigger App Runner deployment
           env:
-            SERVICE_ARN: arn:aws:apprunner:us-east-2:252374924199:service/action-spec/c0e612943e1e4a81a04919d1f9cde35e
+            SERVICE_ARN: arn:aws:apprunner:us-east-2:YOUR_ACCOUNT_ID:service/action-spec/YOUR_SERVICE_ID
           run: |
             aws apprunner start-deployment \
               --service-arn $SERVICE_ARN \
@@ -67,7 +72,7 @@ spec:
 
         - name: Wait for deployment to complete
           env:
-            SERVICE_ARN: arn:aws:apprunner:us-east-2:252374924199:service/action-spec/c0e612943e1e4a81a04919d1f9cde35e
+            SERVICE_ARN: arn:aws:apprunner:us-east-2:YOUR_ACCOUNT_ID:service/action-spec/YOUR_SERVICE_ID
           run: |
             echo "Waiting for deployment to complete..."
             for i in {1..30}; do
@@ -112,13 +117,13 @@ spec:
       variables:
         AWS_REGION: us-east-2
         ECR_REPOSITORY: action-spec
-        APP_RUNNER_SERVICE_ARN: arn:aws:apprunner:us-east-2:252374924199:service/action-spec/c0e612943e1e4a81a04919d1f9cde35e
+        APP_RUNNER_SERVICE_ARN: arn:aws:apprunner:us-east-2:YOUR_ACCOUNT_ID:service/action-spec/YOUR_SERVICE_ID
 
   required_secrets:
     # Configured in GitHub repository settings
     - name: AWS_ROLE_ARN
       description: IAM role ARN for GitHub Actions OIDC authentication
-      example: arn:aws:iam::252374924199:role/github-actions-deploy-role
+      example: arn:aws:iam::YOUR_ACCOUNT_ID:role/github-actions-deploy-role
 
   required_repository_variables:
     - name: AWS_REGION
@@ -126,7 +131,7 @@ spec:
     - name: ECR_REPOSITORY
       value: action-spec
     - name: APP_RUNNER_SERVICE_ARN
-      value: arn:aws:apprunner:us-east-2:252374924199:service/action-spec/c0e612943e1e4a81a04919d1f9cde35e
+      value: arn:aws:apprunner:us-east-2:YOUR_ACCOUNT_ID:service/action-spec/YOUR_SERVICE_ID
 
   prerequisites:
     aws_iam:
@@ -143,7 +148,7 @@ spec:
         trust_policy:
           effect: Allow
           principal:
-            federated: arn:aws:iam::252374924199:oidc-provider/token.actions.githubusercontent.com
+            federated: arn:aws:iam::YOUR_ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com
           condition:
             StringEquals:
               token.actions.githubusercontent.com:aud: sts.amazonaws.com
