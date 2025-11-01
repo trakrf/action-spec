@@ -5,11 +5,7 @@ Read-only UI for viewing infrastructure pod specifications.
 
 from flask import Flask, render_template, jsonify, abort, request, redirect
 from github import Github
-from github.GithubException import (
-    BadCredentialsException,
-    RateLimitExceededException,
-    GithubException,
-)
+from github.GithubException import BadCredentialsException, GithubException
 import yaml
 import os
 import sys
@@ -37,37 +33,19 @@ if not os.environ.get("FLASK_SECRET_KEY"):
     )
 
 # Configuration from environment
-GH_TOKEN = os.environ.get("GH_TOKEN")
 GH_REPO = os.environ.get("GH_REPO", "trakrf/action-spec")
 SPECS_PATH = os.environ.get("SPECS_PATH", "infra")
 WORKFLOW_BRANCH = os.environ.get("WORKFLOW_BRANCH", "main")
 
-# GH_TOKEN is now optional (fallback for operations without user context)
-if not GH_TOKEN:
-    logger.warning(
-        "GH_TOKEN not set - application will require user authentication for all GitHub operations"
-    )
-    logger.warning(
-        "For local development, set GH_TOKEN in .env.local, or log in via /auth/login"
-    )
-
-logger.info(f"Initializing Spec Editor")
+logger.info(f"Initializing Spec Editor (OAuth-only authentication)")
 logger.info(f"GitHub Repo: {GH_REPO}")
 logger.info(f"Specs Path: {SPECS_PATH}")
 logger.info(f"Workflow Branch: {WORKFLOW_BRANCH}")
+logger.info("All GitHub operations require user authentication via OAuth")
 
 # Initialize GitHub client (lazy - will connect on first use, not at startup)
 github = None
 repo = None
-
-# Don't test connectivity at startup - let the app start quickly
-# GitHub connection will be established when first needed
-if GH_TOKEN:
-    logger.info(f"GH_TOKEN configured - will use for GitHub operations to {GH_REPO}")
-else:
-    logger.info(
-        "Starting without GH_TOKEN - user authentication required for GitHub operations"
-    )
 
 # Simple cache with 30-second TTL (demo usage has plenty of API quota)
 _cache = {}
@@ -184,7 +162,7 @@ def generate_spec_yaml(customer, env, instance_name, waf_enabled):
 def fetch_spec(customer, env):
     """
     Fetch and parse spec.yml from GitHub for a specific pod.
-    Uses user token from cookie, falls back to GH_TOKEN if available.
+    Uses user's OAuth token for authentication.
 
     Args:
         customer: Customer name (validated)
@@ -201,8 +179,8 @@ def fetch_spec(customer, env):
     try:
         logger.info(f"Fetching spec: {path}")
 
-        # Get authenticated GitHub client (user token or GH_TOKEN fallback)
-        github_client = get_github_client(require_user=False)
+        # Get authenticated GitHub client with user's OAuth token
+        github_client = get_github_client()
         repo_obj = github_client.get_repo(GH_REPO)
 
         content = repo_obj.get_contents(path, ref=WORKFLOW_BRANCH)
@@ -223,7 +201,7 @@ def fetch_spec(customer, env):
 def list_all_pods():
     """
     Dynamically discover pods by walking GitHub repo structure.
-    Uses user token from cookie, falls back to GH_TOKEN if available.
+    Uses user's OAuth token for authentication.
     Returns list of {"customer": str, "env": str} dicts.
     Sorted: alphabetically by customer, lifecycle order by env (dev, stg, prd).
     """
@@ -236,8 +214,8 @@ def list_all_pods():
     pods = []
 
     try:
-        # Get authenticated GitHub client (user token or GH_TOKEN fallback)
-        github_client = get_github_client(require_user=False)
+        # Get authenticated GitHub client with user's OAuth token
+        github_client = get_github_client()
         repo_obj = github_client.get_repo(GH_REPO)
 
         customers = repo_obj.get_contents(SPECS_PATH, ref=WORKFLOW_BRANCH)
@@ -377,13 +355,9 @@ def new_pod():
 @app.route("/deploy", methods=["POST"])
 def deploy():
     """Handle form submission - validate and preview (D5A: no actual deployment)"""
-    if not repo and not os.environ.get("GH_TOKEN"):
-        logger.error("GitHub client not initialized and no GH_TOKEN available")
-        abort(500)
-
     try:
-        # Get authenticated GitHub client (user token or GH_TOKEN fallback)
-        github_client = get_github_client(require_user=False)
+        # Get authenticated GitHub client with user's OAuth token
+        github_client = get_github_client()
         repo_obj = github_client.get_repo(GH_REPO)
 
         # Extract and validate form data
@@ -708,13 +682,10 @@ def serve_spa(path):
     Otherwise, serve index.html (SPA fallback).
     """
     from flask import send_from_directory
+    from werkzeug.security import safe_join
 
     # API routes are handled by blueprint, don't catch them here
     if path.startswith("api/"):
-        abort(404)
-
-    # Security: Validate path to prevent directory traversal
-    if ".." in path or path.startswith("/"):
         abort(404)
 
     # Define static folder (since we disabled Flask's built-in static handling)
@@ -723,13 +694,10 @@ def serve_spa(path):
     # If path points to a static file, serve it
     if path:  # Only check for files if path is not empty
         try:
-            static_file = os.path.join(static_folder, path)
-            # Ensure resolved path is within static folder (prevent traversal)
-            static_folder_abs = os.path.abspath(static_folder)
-            static_file_abs = os.path.abspath(static_file)
-
-            if not static_file_abs.startswith(static_folder_abs):
-                # Path traversal attempt
+            # Use safe_join to prevent path traversal attacks (returns None if unsafe)
+            static_file = safe_join(static_folder, path)
+            if static_file is None:
+                # Path traversal attempt detected by safe_join
                 abort(404)
 
             if os.path.exists(static_file) and os.path.isfile(static_file):

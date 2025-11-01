@@ -17,41 +17,17 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def get_github_token_or_fallback():
+def get_github_token():
     """
-    Get user's GitHub token from cookie, fallback to GH_TOKEN.
+    Get user's GitHub token from cookie.
+
+    OAuth-only authentication - all operations use user tokens.
 
     Returns:
-        tuple: (token, is_service_account)
-            - token: GitHub access token (user or service account)
-            - is_service_account: True if using GH_TOKEN fallback
-    """
-    user_token = request.cookies.get("github_token")
-    if user_token:
-        logger.debug("Using user token from cookie")
-        return (user_token, False)
-
-    # Fallback to service account
-    service_token = os.environ.get("GH_TOKEN")
-    if service_token:
-        logger.debug("Using service account token (GH_TOKEN fallback)")
-        return (service_token, True)
-
-    # No token available
-    abort(401, "Not authenticated. Please log in with GitHub.")
-
-
-def get_user_token_required():
-    """
-    Get user's GitHub token from cookie (no fallback).
-
-    Use this for operations that MUST use user context.
-
-    Returns:
-        str: GitHub access token
+        str: GitHub access token from user's OAuth session
 
     Raises:
-        401: If no user token in cookie
+        401: If no user token in cookie (user not authenticated)
     """
     token = request.cookies.get("github_token")
     if not token:
@@ -59,27 +35,25 @@ def get_user_token_required():
     return token
 
 
-def get_github_client(require_user=False):
+def get_github_client():
     """
-    Get PyGithub client authenticated with user token or fallback.
+    Get PyGithub client authenticated with user's OAuth token.
 
-    Args:
-        require_user: If True, only use user tokens (no fallback)
+    OAuth-only authentication - all operations use user tokens.
 
     Returns:
         Github: Authenticated PyGithub client
+
+    Raises:
+        401: If user not authenticated
     """
-    if require_user:
-        token = get_user_token_required()
-        return Github(token)
-    else:
-        token, is_service = get_github_token_or_fallback()
-        return Github(token)
+    token = get_github_token()
+    return Github(token)
 
 
 def github_api_call(endpoint, method="GET", **kwargs):
     """
-    Make GitHub REST API call with user's token.
+    Make GitHub REST API call with user's OAuth token.
 
     Uses requests library for direct API access.
     For operations not covered by PyGithub or when you need raw responses.
@@ -95,7 +69,7 @@ def github_api_call(endpoint, method="GET", **kwargs):
     Raises:
         401: If token invalid or missing
     """
-    token, is_service = get_github_token_or_fallback()
+    token = get_github_token()
 
     headers = kwargs.pop("headers", {})
     headers["Authorization"] = f"token {token}"
