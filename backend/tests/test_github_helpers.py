@@ -17,8 +17,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from github_helpers import (
-    get_github_token_or_fallback,
-    get_user_token_required,
+    get_github_token,
     get_github_client,
     github_api_call,
     check_repo_access,
@@ -35,83 +34,45 @@ def app():
 
 
 class TestTokenExtraction:
-    """Tests for token extraction functions"""
+    """Tests for OAuth token extraction"""
 
     def test_get_token_from_cookie(self, app):
-        """Should extract token from cookie"""
+        """Should extract user's OAuth token from cookie"""
         with app.test_request_context():
             with app.test_client() as client:
                 client.set_cookie("github_token", "user_token_123")
                 with client:
                     client.get("/")
-                    token, is_service = get_github_token_or_fallback()
+                    token = get_github_token()
                     assert token == "user_token_123"
-                    assert is_service is False
 
-    @patch.dict(os.environ, {"GH_TOKEN": "service_token_456"})
-    def test_fallback_to_gh_token(self, app):
-        """Should fallback to GH_TOKEN if no cookie"""
-        with app.test_request_context():
-            token, is_service = get_github_token_or_fallback()
-            assert token == "service_token_456"
-            assert is_service is True
-
-    @patch.dict(os.environ, {"GH_TOKEN": ""})
-    def test_no_token_available_aborts(self, app):
-        """Should abort 401 if no token available"""
+    def test_no_token_aborts(self, app):
+        """Should abort 401 if user not authenticated"""
         with app.test_request_context():
             with pytest.raises(Exception):  # Flask abort raises werkzeug exception
-                get_github_token_or_fallback()
-
-    def test_get_user_token_required_success(self, app):
-        """Should return user token from cookie"""
-        with app.test_request_context():
-            with app.test_client() as client:
-                client.set_cookie("github_token", "user_token_123")
-                with client:
-                    client.get("/")
-                    token = get_user_token_required()
-                    assert token == "user_token_123"
-
-    def test_get_user_token_required_no_cookie(self, app):
-        """Should abort 401 if no cookie (no fallback)"""
-        with app.test_request_context():
-            with pytest.raises(Exception):
-                get_user_token_required()
+                get_github_token()
 
 
 class TestGithubClient:
-    """Tests for get_github_client function"""
+    """Tests for OAuth-authenticated GitHub client"""
 
     @patch("github_helpers.Github")
     def test_get_client_with_user_token(self, mock_github, app):
-        """Should create client with user token"""
+        """Should create client with user's OAuth token"""
         with app.test_request_context():
             with app.test_client() as client:
                 client.set_cookie("github_token", "user_token")
                 with client:
                     client.get("/")
-                    get_github_client(require_user=False)
+                    get_github_client()
                     mock_github.assert_called_with("user_token")
 
     @patch("github_helpers.Github")
-    @patch.dict(os.environ, {"GH_TOKEN": "service_token"})
-    def test_get_client_with_fallback(self, mock_github, app):
-        """Should create client with GH_TOKEN fallback"""
+    def test_get_client_no_auth_aborts(self, mock_github, app):
+        """Should abort 401 if user not authenticated"""
         with app.test_request_context():
-            get_github_client(require_user=False)
-            mock_github.assert_called_with("service_token")
-
-    @patch("github_helpers.Github")
-    def test_get_client_require_user(self, mock_github, app):
-        """Should only accept user token when require_user=True"""
-        with app.test_request_context():
-            with app.test_client() as client:
-                client.set_cookie("github_token", "user_token")
-                with client:
-                    client.get("/")
-                    get_github_client(require_user=True)
-                    mock_github.assert_called_with("user_token")
+            with pytest.raises(Exception):
+                get_github_client()
 
 
 class TestGithubApiCall:

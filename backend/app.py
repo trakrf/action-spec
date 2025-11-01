@@ -5,11 +5,7 @@ Read-only UI for viewing infrastructure pod specifications.
 
 from flask import Flask, render_template, jsonify, abort, request, redirect
 from github import Github
-from github.GithubException import (
-    BadCredentialsException,
-    RateLimitExceededException,
-    GithubException,
-)
+from github.GithubException import BadCredentialsException, GithubException
 import yaml
 import os
 import sys
@@ -25,7 +21,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Flask app
-app = Flask(__name__, static_folder="static", static_url_path="")
+# Disable Flask's default static route by setting static_folder=None
+# We'll handle static file serving manually in serve_spa()
+app = Flask(__name__, static_folder=None)
 # Flask secret key for sessions (CSRF protection during OAuth)
 # Generate with: python -c "import secrets; print(secrets.token_hex(32))"
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
@@ -35,50 +33,19 @@ if not os.environ.get("FLASK_SECRET_KEY"):
     )
 
 # Configuration from environment
-GH_TOKEN = os.environ.get("GH_TOKEN")
 GH_REPO = os.environ.get("GH_REPO", "trakrf/action-spec")
 SPECS_PATH = os.environ.get("SPECS_PATH", "infra")
 WORKFLOW_BRANCH = os.environ.get("WORKFLOW_BRANCH", "main")
 
-# GH_TOKEN is now optional (fallback for operations without user context)
-if not GH_TOKEN:
-    logger.warning(
-        "GH_TOKEN not set - application will require user authentication for all GitHub operations"
-    )
-    logger.warning(
-        "For local development, set GH_TOKEN in .env.local, or log in via /auth/login"
-    )
-
-logger.info(f"Initializing Spec Editor")
+logger.info(f"Initializing Spec Editor (OAuth-only authentication)")
 logger.info(f"GitHub Repo: {GH_REPO}")
 logger.info(f"Specs Path: {SPECS_PATH}")
 logger.info(f"Workflow Branch: {WORKFLOW_BRANCH}")
+logger.info("All GitHub operations require user authentication via OAuth")
 
-# Initialize GitHub client (with GH_TOKEN if available, for startup checks)
+# Initialize GitHub client (lazy - will connect on first use, not at startup)
 github = None
 repo = None
-
-if GH_TOKEN:
-    try:
-        github = Github(GH_TOKEN)
-        repo = github.get_repo(GH_REPO)
-        # Test connectivity
-        repo.get_contents(SPECS_PATH, ref=WORKFLOW_BRANCH)
-        logger.info(
-            f"✓ Successfully connected to GitHub repo: {GH_REPO} (branch: {WORKFLOW_BRANCH}) using GH_TOKEN"
-        )
-    except BadCredentialsException:
-        logger.error("GitHub authentication failed: Invalid or expired GH_TOKEN")
-        logger.error("Check that GH_TOKEN has 'repo' scope")
-        sys.exit(1)
-    except Exception as e:
-        logger.error(f"Failed to initialize GitHub client: {e}")
-        logger.error(f"Repository: {GH_REPO}, Path: {SPECS_PATH}")
-        sys.exit(1)
-else:
-    logger.info(
-        "Starting without GH_TOKEN - user authentication required for GitHub operations"
-    )
 
 # Simple cache with 30-second TTL (demo usage has plenty of API quota)
 _cache = {}
@@ -195,7 +162,7 @@ def generate_spec_yaml(customer, env, instance_name, waf_enabled):
 def fetch_spec(customer, env):
     """
     Fetch and parse spec.yml from GitHub for a specific pod.
-    Uses user token from cookie, falls back to GH_TOKEN if available.
+    Uses user's OAuth token for authentication.
 
     Args:
         customer: Customer name (validated)
@@ -212,8 +179,8 @@ def fetch_spec(customer, env):
     try:
         logger.info(f"Fetching spec: {path}")
 
-        # Get authenticated GitHub client (user token or GH_TOKEN fallback)
-        github_client = get_github_client(require_user=False)
+        # Get authenticated GitHub client with user's OAuth token
+        github_client = get_github_client()
         repo_obj = github_client.get_repo(GH_REPO)
 
         content = repo_obj.get_contents(path, ref=WORKFLOW_BRANCH)
@@ -234,7 +201,7 @@ def fetch_spec(customer, env):
 def list_all_pods():
     """
     Dynamically discover pods by walking GitHub repo structure.
-    Uses user token from cookie, falls back to GH_TOKEN if available.
+    Uses user's OAuth token for authentication.
     Returns list of {"customer": str, "env": str} dicts.
     Sorted: alphabetically by customer, lifecycle order by env (dev, stg, prd).
     """
@@ -247,8 +214,8 @@ def list_all_pods():
     pods = []
 
     try:
-        # Get authenticated GitHub client (user token or GH_TOKEN fallback)
-        github_client = get_github_client(require_user=False)
+        # Get authenticated GitHub client with user's OAuth token
+        github_client = get_github_client()
         repo_obj = github_client.get_repo(GH_REPO)
 
         customers = repo_obj.get_contents(SPECS_PATH, ref=WORKFLOW_BRANCH)
@@ -388,13 +355,9 @@ def new_pod():
 @app.route("/deploy", methods=["POST"])
 def deploy():
     """Handle form submission - validate and preview (D5A: no actual deployment)"""
-    if not repo and not os.environ.get("GH_TOKEN"):
-        logger.error("GitHub client not initialized and no GH_TOKEN available")
-        abort(500)
-
     try:
-        # Get authenticated GitHub client (user token or GH_TOKEN fallback)
-        github_client = get_github_client(require_user=False)
+        # Get authenticated GitHub client with user's OAuth token
+        github_client = get_github_client()
         repo_obj = github_client.get_repo(GH_REPO)
 
         # Extract and validate form data
@@ -637,72 +600,33 @@ Review the terraform plan output below before merging.
 
 @app.route("/health")
 def health():
-    """Health check: validate GitHub connectivity and show rate limit"""
-    try:
-        # Get authenticated GitHub client (user token or GH_TOKEN fallback)
-        github_client = get_github_client(require_user=False)
-        repo_obj = github_client.get_repo(GH_REPO)
-
-        # Test connectivity
-        repo_obj.get_contents(SPECS_PATH, ref=WORKFLOW_BRANCH)
-
-        # Get rate limit info
-        rate_limit = github_client.get_rate_limit()
-        remaining = rate_limit.core.remaining
-        limit = rate_limit.core.limit
-        reset_timestamp = rate_limit.core.reset.timestamp()
-
-        # D5B: Check workflow scope (best-effort)
-        has_workflow_scope = False
-        try:
-            # Try to list workflows (requires workflow scope)
-            workflows = repo_obj.get_workflows()
-            has_workflow_scope = workflows.totalCount > 0
-        except:
-            pass
-
-        return jsonify(
-            {
-                "status": "healthy",
-                "github": "connected",
-                "repo": GH_REPO,
-                "scopes": {
-                    "repo": True,  # If we got here, we have repo scope
-                    "workflow": has_workflow_scope,
-                },
-                "rate_limit": {
-                    "remaining": remaining,
-                    "limit": limit,
-                    "reset_at": int(reset_timestamp),
-                },
-            }
-        )
-
-    except RateLimitExceededException as e:
-        reset_time = github.get_rate_limit().core.reset
-        return (
-            jsonify(
-                {
-                    "status": "unhealthy",
-                    "error": "Rate limit exceeded",
-                    "reset_at": int(reset_time.timestamp()),
-                }
-            ),
-            503,
-        )
-
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        # Don't expose exception details to external users
-        return jsonify({"status": "unhealthy", "error": "Service unavailable"}), 503
+    """Health check: simple liveness check (no GitHub connectivity required)"""
+    # With OAuth-only auth, we don't check GitHub connectivity at startup
+    # Users will authenticate when they access the app
+    return jsonify(
+        {
+            "status": "healthy",
+            "app": "action-spec",
+            "version": "0.2.0",
+            "repo": GH_REPO,
+            "auth": "oauth",
+        }
+    )
 
 
 @app.errorhandler(404)
 def not_found_error(error):
-    """Handle 404 errors - removed template rendering for Vue SPA compatibility"""
-    # For Vue SPA, 404 errors should pass through to SPA routing
-    # Don't handle 404s here - let serve_spa() handle them
-    pass
+    """Handle 404 errors - return proper 404 response"""
+    return (
+        jsonify(
+            {
+                "error": "Not Found",
+                "message": "The requested resource was not found",
+                "status": 404,
+            }
+        ),
+        404,
+    )
 
 
 @app.errorhandler(500)
@@ -757,32 +681,65 @@ def serve_spa(path):
     If path is a file (e.g., .js, .css), serve it.
     Otherwise, serve index.html (SPA fallback).
     """
+    from flask import send_from_directory
+    from werkzeug.security import safe_join
+
     # API routes are handled by blueprint, don't catch them here
     if path.startswith("api/"):
         abort(404)
 
-    # Security: Validate path to prevent directory traversal
-    if ".." in path or path.startswith("/"):
-        abort(404)
+    # Define static folder (since we disabled Flask's built-in static handling)
+    static_folder = os.path.join(os.path.dirname(__file__), "static")
 
     # If path points to a static file, serve it
-    # send_static_file safely handles path resolution within static_folder
-    try:
-        static_file = os.path.join(app.static_folder, path)
-        # Ensure resolved path is within static folder (prevent traversal)
-        static_folder_abs = os.path.abspath(app.static_folder)
-        static_file_abs = os.path.abspath(static_file)
-        if not static_file_abs.startswith(static_folder_abs):
+    if path:  # Only check for files if path is not empty
+        try:
+            # Use safe_join to prevent path traversal attacks (returns None if unsafe)
+            static_file = safe_join(static_folder, path)
+            if static_file is None:
+                # Path traversal attempt detected by safe_join
+                abort(404)
+
+            if os.path.exists(static_file) and os.path.isfile(static_file):
+                # File exists, serve it
+                return send_from_directory(static_folder, path)
+
+            # File doesn't exist - could be a SPA route or 404
+            # For common static file extensions, return 404
+            static_extensions = {
+                ".js",
+                ".css",
+                ".ico",
+                ".png",
+                ".jpg",
+                ".jpeg",
+                ".gif",
+                ".svg",
+                ".woff",
+                ".woff2",
+                ".ttf",
+                ".eot",
+            }
+            if any(path.endswith(ext) for ext in static_extensions):
+                # Static file requested but doesn't exist
+                logger.info(f"Static file not found: {path}")
+                abort(404)
+
+        except (ValueError, OSError) as e:
+            # Invalid path or filesystem error
+            logger.warning(f"Error serving static file {path}: {e}")
             abort(404)
 
-        if os.path.exists(static_file) and os.path.isfile(static_file):
-            return app.send_static_file(path)
-    except (ValueError, OSError):
-        # Invalid path, fall through to SPA fallback
-        pass
-
     # Otherwise, serve index.html (SPA fallback)
-    return app.send_static_file("index.html")
+    try:
+        index_path = os.path.join(static_folder, "index.html")
+        if not os.path.exists(index_path):
+            logger.error(f"index.html not found at {index_path}")
+            abort(500)
+        return send_from_directory(static_folder, "index.html")
+    except Exception as e:
+        logger.error(f"Failed to serve index.html: {e}")
+        abort(500)
 
 
 if __name__ == "__main__":

@@ -49,6 +49,7 @@ logs/
 
 # Testing
 .spec/
+.specstory/
 coverage/
 .nyc_output/
 playwright-report/

@@ -51,9 +51,13 @@ def login():
         logger.error("GITHUB_OAUTH_CLIENT_ID not configured")
         abort(500, "OAuth not configured. Please contact administrator.")
 
+    # Build callback URL - use HTTPS for production (App Runner terminates TLS)
+    # request.host gives us the domain without protocol
+    callback_url = f"https://{request.host}/auth/callback"
+
     params = {
         "client_id": client_id,
-        "redirect_uri": f"{request.host_url.rstrip('/')}/auth/callback",
+        "redirect_uri": callback_url,
         "scope": "repo workflow",
         "state": state,
     }
@@ -107,11 +111,14 @@ def callback():
         abort(500, "OAuth not configured. Please contact administrator.")
 
     token_url = "https://github.com/login/oauth/access_token"
+    # Use same callback URL as login (HTTPS)
+    callback_url = f"https://{request.host}/auth/callback"
+
     data = {
         "client_id": client_id,
         "client_secret": client_secret,
         "code": code,
-        "redirect_uri": f"{request.host_url.rstrip('/')}/auth/callback",
+        "redirect_uri": callback_url,
     }
 
     try:

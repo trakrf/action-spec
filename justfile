@@ -110,3 +110,23 @@ validate: lint test build
 # Alias for CI/CD
 check: validate
 
+# ============================================================================
+# Docker E2E Testing
+# ============================================================================
+
+# Quick Docker test - fast iteration (~30s)
+test-docker-quick:
+    @echo "🧪 Running quick Docker E2E test..."
+    @./scripts/test-docker-quick.sh
+
+# Comprehensive Docker test - full validation (~60s)
+test-docker:
+    @echo "🧪 Running comprehensive Docker E2E test..."
+    @./scripts/test-docker-local.sh
+
+# Alias for quick test
+test-e2e: test-docker-quick
+
+# Run all tests including Docker E2E
+test-all: test test-docker
+

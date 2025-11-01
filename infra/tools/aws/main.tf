@@ -1,3 +1,9 @@
+# Generate secure Flask secret key for session management
+resource "random_password" "flask_secret" {
+  length  = 32
+  special = true
+}
+
 # Auto-scaling configuration
 resource "aws_apprunner_auto_scaling_configuration_version" "action_spec" {
   auto_scaling_configuration_name = "action-spec-autoscaling"
@@ -29,14 +35,16 @@ resource "aws_apprunner_service" "action_spec" {
         port = "8080"
 
         runtime_environment_variables = {
-          AWS_REGION      = var.aws_region
-          GH_REPO         = var.github_repo
-          SPECS_PATH      = "infra"
-          WORKFLOW_BRANCH = var.github_branch
+          AWS_REGION               = var.aws_region
+          GH_REPO                  = var.github_repo
+          SPECS_PATH               = "infra"
+          WORKFLOW_BRANCH          = var.github_branch
+          GITHUB_OAUTH_CLIENT_ID   = var.github_oauth_client_id
+          FLASK_SECRET_KEY         = random_password.flask_secret.result
         }
 
         runtime_environment_secrets = {
-          GH_TOKEN = aws_secretsmanager_secret.github_token.arn
+          GITHUB_OAUTH_CLIENT_SECRET = aws_secretsmanager_secret.github_oauth_client_secret.arn
         }
       }
     }
