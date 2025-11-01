@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { version } from '../../package.json'
 
 const route = useRoute()
 
@@ -141,7 +142,7 @@ const prNumber = computed(() => route.query.pr_number)
         </a>
       </p>
       <p class="mt-2">
-        ActionSpec v0.1.0 - Infrastructure Deployment via Spec Editor
+        ActionSpec v{{ version }} - Infrastructure Deployment via Spec Editor
       </p>
     </footer>
   </div>
