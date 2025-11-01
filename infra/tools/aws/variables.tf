@@ -16,11 +16,15 @@ variable "github_branch" {
   default     = "main"
 }
 
-variable "github_token" {
-  description = "GitHub token for API access (loaded from .env.local via TF_VAR_github_token)"
+variable "github_oauth_client_id" {
+  description = "GitHub OAuth App Client ID (public identifier)"
+  type        = string
+}
+
+variable "github_oauth_client_secret" {
+  description = "GitHub OAuth App Client Secret (sensitive)"
   type        = string
   sensitive   = true
-  # No default - must be provided via environment
 }
 
 variable "cpu" {
