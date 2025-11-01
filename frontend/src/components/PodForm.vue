@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { version } from '../../package.json'
 
 const route = useRoute()
 const router = useRouter()
@@ -418,7 +419,7 @@ onMounted(() => {
         </a>
       </p>
       <p class="mt-2">
-        ActionSpec v0.1.0 - Infrastructure Deployment via Spec Editor
+        ActionSpec v{{ version }} - Infrastructure Deployment via Spec Editor
       </p>
     </footer>
   </div>

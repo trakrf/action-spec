@@ -33,7 +33,7 @@ resource "aws_iam_role_policy" "app_runner_secrets" {
         Action = [
           "secretsmanager:GetSecretValue"
         ]
-        Resource = aws_secretsmanager_secret.github_token.arn
+        Resource = aws_secretsmanager_secret.github_oauth_client_secret.arn
       }
     ]
   })
