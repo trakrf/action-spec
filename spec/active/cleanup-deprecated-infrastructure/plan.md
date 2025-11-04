@@ -346,7 +346,7 @@ Replace [Unreleased] section with new version:
 - **overengineered/ directory** - Removed historical "what not to do" examples and partially-built enterprise architecture
   - Original SAM approach was ~50% built before pivot to Flask+Docker+Terraform
   - Served educational purpose but cluttered repository
-  - See git history for reference if needed
+  - See commit `130932d` for deleted content
 - **demo/ directory** - Removed outdated deployment documentation with deprecated GH_TOKEN instructions
 - **.env.example** - Removed GH_TOKEN-only template, use .env.local.example instead
 
@@ -392,7 +392,7 @@ Add after line 37 ("**Learning:** Should have validated..."):
 
 ```markdown
 
-**Historical Note** (January 2025): This repository previously contained a partially-built SAM/Lambda implementation and "overengineered" examples to demonstrate what not to do. These were removed as they served their educational purpose but cluttered the repository. The project uses GitHub OAuth exclusively for authentication (GH_TOKEN removed in v0.2.0). See git history or CHANGELOG.md for details.
+**Historical Note** (January 2025): This repository previously contained a partially-built SAM/Lambda implementation and "overengineered" examples to demonstrate what not to do. These were removed as they served their educational purpose but cluttered the repository. The project uses GitHub OAuth exclusively for authentication (GH_TOKEN removed in v0.2.0). See commit `130932d` for deleted content or check CHANGELOG.md for details.
 ```
 
 **Validation**:
