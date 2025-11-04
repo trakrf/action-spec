@@ -36,7 +36,7 @@ This repository contains a **complete proof-of-concept demonstration** of YAML-d
 
 **Learning:** Should have validated with POC before building enterprise foundation - but the foundation work informed the POC architecture and is ready when enterprise scaling is needed.
 
-**Historical Note** (January 2025): This repository previously contained a partially-built SAM/Lambda implementation and "overengineered" examples to demonstrate what not to do. These were removed as they served their educational purpose but cluttered the repository. The project uses GitHub OAuth exclusively for authentication (GH_TOKEN removed in v0.2.0). See commit `130932d` for deleted content or check CHANGELOG.md for details.
+**Historical Note** (Nov 2025): This repository previously contained a partially-built SAM/Lambda implementation and "overengineered" examples to demonstrate what not to do. These were removed as they served their educational purpose but cluttered the repository. The project uses GitHub OAuth exclusively for authentication (GH_TOKEN removed in v0.2.0). See commit `130932d` for deleted content or check CHANGELOG.md for details.
 
 **See the implementation**: The `backend/` directory contains the main implementation. See [backend/README.md](backend/README.md) for architecture and setup.
 
