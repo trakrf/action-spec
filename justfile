@@ -86,8 +86,9 @@ clean:
 check-env:
     #!/usr/bin/env bash
     [ -f ".env.local" ] && source .env.local
-    echo "Checking required environment variables..."
-    [ -z "${GH_TOKEN:-}" ] && echo "❌ GH_TOKEN not set" || echo "✓ GH_TOKEN is set"
+    echo "Checking OAuth configuration..."
+    [ -z "${GITHUB_OAUTH_CLIENT_ID:-}" ] && echo "⚠️  GITHUB_OAUTH_CLIENT_ID not set (optional for local dev)" || echo "✓ GITHUB_OAUTH_CLIENT_ID is set"
+    [ -z "${FLASK_SECRET_KEY:-}" ] && echo "⚠️  FLASK_SECRET_KEY not set (optional for local dev)" || echo "✓ FLASK_SECRET_KEY is set"
     echo "✓ GH_REPO=${GH_REPO:-trakrf/action-spec}"
     echo "✓ SPECS_PATH=${SPECS_PATH:-infra}"
 

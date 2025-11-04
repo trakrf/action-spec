@@ -10,35 +10,10 @@
 .DS_Store
 Thumbs.db
 
-# Node.js / npm
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-dist/
-build/
-*.tsbuildinfo
-
-# Environment (expanded from CSW)
+# Environment
 .env
-.env.local
-.env.*.local
-.envrc
-
-# OpenTofu / Terraform
-.terraform/
-*.tfstate
-*.tfstate.*
-*.tfstate.backup
-*.tfvars
-!*.tfvars.example
-crash.log
-crash.*.log
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
+.env.*
+!.env*.example
 
 # AWS
 .aws/
@@ -47,44 +22,9 @@ override.tf.json
 *.log
 logs/
 
-# Testing
+# Testing (spec system)
 .spec/
 .specstory/
-coverage/
-.nyc_output/
-playwright-report/
-test-results/
 
-# Build artifacts
-*.zip
+# Archives
 *.tar.gz
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-.venv
-pip-log.txt
-pip-delete-this-directory.txt
-.pytest_cache/
-.coverage
-htmlcov/
-*.egg-info/
-dist/
-build/
-backend/static
-
-# AWS SAM
-.aws-sam/
-samconfig.toml.bak
-env.json
-!env.json.example
-
-# Lambda packaging
-*.zip
-package/

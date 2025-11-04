@@ -16,8 +16,7 @@ services:
       - FLASK_APP=app
       - FLASK_ENV=development
       - FLASK_DEBUG=1
-      # GitHub API configuration
-      - GH_TOKEN=${GH_TOKEN}
+      # OAuth configuration loaded from .env.local
       - GH_REPO=${GH_REPO:-trakrf/action-spec}
       - SPECS_PATH=${SPECS_PATH:-infra}
       - WORKFLOW_BRANCH=${WORKFLOW_BRANCH:-main}

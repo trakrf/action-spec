@@ -16,7 +16,6 @@ docker build -t $IMAGE:latest . -q
 
 echo "Starting container..."
 docker run -d --name $CONTAINER -p $PORT:8080 \
-    -e GH_TOKEN="${GH_TOKEN:-}" \
     $IMAGE:latest
 
 echo "Waiting for health check..."
