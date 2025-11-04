@@ -13,7 +13,6 @@ IMAGE_NAME="action-spec-test"
 CONTAINER_NAME="action-spec-e2e-test"
 PORT=8080
 TIMEOUT=30
-GITHUB_TOKEN="${GH_TOKEN:-}"
 
 # Cleanup function
 cleanup() {
@@ -36,25 +35,11 @@ echo "✓ Image built successfully"
 echo ""
 
 echo "🚀 Step 2: Starting container..."
-if [ -z "$GITHUB_TOKEN" ]; then
-    echo "⚠️  Warning: GH_TOKEN not set, some endpoints may not work"
-    docker run -d \
-        --name "$CONTAINER_NAME" \
-        -p "$PORT:8080" \
-        -e FLASK_ENV=production \
-        "$IMAGE_NAME:test"
-else
-    echo "✓ Using GH_TOKEN from environment"
-    docker run -d \
-        --name "$CONTAINER_NAME" \
-        -p "$PORT:8080" \
-        -e FLASK_ENV=production \
-        -e GH_TOKEN="$GITHUB_TOKEN" \
-        -e GH_REPO="trakrf/action-spec" \
-        -e SPECS_PATH="infra" \
-        -e WORKFLOW_BRANCH="main" \
-        "$IMAGE_NAME:test"
-fi
+docker run -d \
+    --name "$CONTAINER_NAME" \
+    -p "$PORT:8080" \
+    -e FLASK_ENV=production \
+    "$IMAGE_NAME:test"
 echo "✓ Container started: $CONTAINER_NAME"
 echo ""
 
@@ -165,20 +150,13 @@ else
 fi
 echo ""
 
-# Test 5: API endpoints (if GH_TOKEN available)
-if [ -n "$GITHUB_TOKEN" ]; then
-    echo "  Test 5: GET /api/pods"
-    PODS_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$PORT/api/pods)
-    if [ "$PODS_CODE" = "200" ]; then
-        echo "    ✓ API endpoint accessible (HTTP 200)"
-        PODS_RESPONSE=$(curl -s http://localhost:$PORT/api/pods)
-        POD_COUNT=$(echo "$PODS_RESPONSE" | jq '. | length' 2>/dev/null || echo "unknown")
-        echo "    Discovered $POD_COUNT pods"
-    else
-        echo "    ⚠️  API returned $PODS_CODE (might need authentication)"
-    fi
+echo "  Test 5: OAuth authentication"
+echo "    ⚠️  API endpoints require OAuth login (expected 401)"
+PODS_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$PORT/api/pods)
+if [ "$PODS_CODE" = "401" ]; then
+    echo "    ✓ API correctly requires authentication (HTTP 401)"
 else
-    echo "  Test 5: Skipped (no GH_TOKEN)"
+    echo "    ⚠️  Unexpected response: HTTP $PODS_CODE"
 fi
 echo ""
 

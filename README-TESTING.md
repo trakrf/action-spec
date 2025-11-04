@@ -29,19 +29,25 @@ Local end-to-end testing scripts for validating the production Docker container 
 ## Prerequisites
 
 - Docker installed and running
-- (Optional) `GH_TOKEN` environment variable for GitHub API access
 - `jq` for JSON parsing (comprehensive test only)
 
-## Setting GitHub Token
+## Authentication
 
-For full functionality testing:
+This application uses **GitHub OAuth exclusively** for authentication (as of v0.2.0).
 
-```bash
-export GH_TOKEN="your_github_token_here"
-./test-docker-local.sh
-```
+The test scripts validate:
+- Container builds and starts successfully
+- Health endpoint responds
+- Static assets load correctly
+- Application UI is accessible
 
-Without `GH_TOKEN`, the app will start but GitHub-dependent features won't work.
+**Note**: API endpoints require OAuth authentication. To test authenticated endpoints:
+1. Start the application: `docker compose up`
+2. Visit http://localhost:5000
+3. Log in with GitHub OAuth
+4. Test API endpoints from your authenticated browser session
+
+The E2E test scripts focus on infrastructure validation (Docker, health checks, static assets) rather than authenticated API testing.
 
 ## What Gets Tested
 
@@ -60,7 +66,7 @@ Without `GH_TOKEN`, the app will start but GitHub-dependent features won't work.
 4. ✅ Root `/` serves Vue SPA with `<div id="app">`
 5. ✅ Static JavaScript assets load (HTTP 200)
 6. ✅ Favicon handling (200 or 404 acceptable)
-7. ✅ `/api/pods` endpoint (if GH_TOKEN available)
+7. ⚠️ `/api/pods` endpoint returns 401 (requires OAuth login)
 8. 📊 Container resource stats (CPU, memory)
 9. 📋 Full container logs
 
@@ -124,14 +130,12 @@ Add to `.github/workflows/`:
 ```yaml
 - name: Run E2E Docker tests
   run: ./test-docker-local.sh
-  env:
-    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ## Known Issues
 
 - Favicon 404 is acceptable (not critical)
-- Without `GH_TOKEN`, API endpoints will return auth errors
+- API endpoints return 401 without OAuth authentication (expected behavior)
 - First build may take 2-3 minutes (subsequent builds are cached)
 
 ## Success Criteria

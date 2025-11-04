@@ -20,11 +20,10 @@ dist/
 build/
 *.tsbuildinfo
 
-# Environment (expanded from CSW)
+# Environment
 .env
-.env.local
-.env.*.local
-.envrc
+.env.*
+!.env*.example
 
 # OpenTofu / Terraform
 .terraform/
@@ -78,12 +77,6 @@ htmlcov/
 dist/
 build/
 backend/static
-
-# AWS SAM
-.aws-sam/
-samconfig.toml.bak
-env.json
-!env.json.example
 
 # Lambda packaging
 *.zip
