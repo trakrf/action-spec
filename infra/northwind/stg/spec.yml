@@ -1,0 +1,11 @@
+metadata:
+  customer: northwind
+  environment: stg
+  version: '1.0'
+spec:
+  compute:
+    instance_name: asdf
+    instance_type: t4g.nano
+  security:
+    waf:
+      enabled: false
