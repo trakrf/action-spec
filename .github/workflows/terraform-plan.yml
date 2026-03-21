@@ -53,7 +53,7 @@ jobs:
 
       - name: Setup Terraform
         if: steps.detect.outputs.spec_path != ''
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
