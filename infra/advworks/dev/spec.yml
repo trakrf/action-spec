@@ -1,11 +1,10 @@
-apiVersion: v1
-kind: Pod
 metadata:
   customer: advworks
   environment: dev
+  version: '1.0'
 spec:
   compute:
-    instance_name: web1
+    instance_name: web2
     instance_type: t4g.nano
   security:
     waf:
